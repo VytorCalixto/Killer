@@ -1,0 +1,86 @@
+[*]
+[*] GTKWave Analyzer v3.3.37 (w)1999-2012 BSI
+[*] Mon Jun 23 19:48:22 2014
+[*]
+[dumpfile] "/home/roberto/cMIPS/v_cMIPS.vcd"
+[dumpfile_mtime] "Mon Jun 23 19:47:03 2014"
+[dumpfile_size] 958913
+[savefile] "/home/roberto/cMIPS/pipe.sav"
+[timestart] 3701600000
+[size] 1213 982
+[pos] -1 -1
+*-27.000000 3863200000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] u_core.
+[treeopen] u_core.u_alu.
+[sst_width] 210
+[signals_width] 230
+[sst_expanded] 1
+[sst_vpaned_height] 292
+@28
+clk
+@22
+u_core.pc[31:0]
+u_core.instr_fetched[31:0]
+@28
+u_core.pcsel[1:0]
+@200
+-    decode, reg fetch
+@22
+u_core.instr_valid[31:0]
+u_core.regs_a[31:0]
+u_core.regs_b[31:0]
+u_core.eq_fwd_a[31:0]
+u_core.eq_fwd_b[31:0]
+@200
+-    exec
+@24
+u_core.u_alu.operation[31:0]
+@22
+u_core.ex_displ32[31:0]
+u_core.alu_inp_a[31:0]
+u_core.alu_inp_b[31:0]
+u_core.result[31:0]
+@24
+u_core.ex_a_c[4:0]
+@200
+-    memory
+@28
+u_core.b_sel[3:0]
+u_core.wr
+u_core.d_aval
+@22
+u_core.d_addr[31:0]
+u_core.data_inp[31:0]
+u_core.data_out[31:0]
+@200
+-    write-back
+@28
+u_core.wb_muxc[2:0]
+u_core.wb_wreg
+@22
+u_core.wb_a_c[4:0]
+u_core.wb_c[31:0]
+@200
+-    cache
+@28
+u_d_cache.cpu_xfer[3:0]
+u_d_cache.cpu_sel
+u_d_cache.cpu_rdy
+u_d_cache.miss
+@24
+u_d_cache.dc_current[31:0]
+@28
+u_d_cache.mem_sel
+u_d_cache.mem_rdy
+@200
+-    RAM
+@28
+u_ram.byte_sel[3:0]
+u_ram.sel
+u_ram.strobe
+@22
+u_ram.i_addr[31:0]
+u_ram.data_inp[31:0]
+u_ram.data_out[31:0]
+[pattern_trace] 1
+[pattern_trace] 0
