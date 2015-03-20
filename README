@@ -2,14 +2,30 @@ cMIPS
 
 cMIPS - an FPGA ready VHDL model for 5-stage pipeline, MIPS32r2 core
 
-The VHDL model mimics the pipeline design described in Patterson & Hennessy's book (Computer Organisation and Design) and is an almost complete implementation of the MIPS32r2 instruction set.  The TLB and assorted control registers will be included soon (as of fev 2015).  The model was synthesized for an Altera EP4CE30F23. The model uses up 15% of combinational blocks and 5% logic registers.
+The VHDL model mimics the pipeline design described in Patterson & Hennessy's
+book (Computer Organisation and Design) and is an (almost) complete
+implementation of the MIPS32r2 instruction set.
+
+The TLB and assorted control registers will be included soon (as of March 2015).
+
+The model was synthesized for an Altera EP4CE30F23. The model uses up 15% of
+combinational blocks and 5% logic registers of the FPGA.
 
 
 Processor model runs C code, compiled with GCC;
-Testbench includes processor, RAM, ROM and file I/O;
-Core has all forwarding paths and is fully interlocked for data and control hazards;
-Coprocessor0 is partially implemented, six hardware interrupts + NMI implemented in "Interrupt Compatibility Mode";
-The instructions break, syscall, trap, mfc0, mtc0, eret, ei, di, ll, sc are implemented;
-Partial-word loads and stores (word, half-word, byte) implemented at the processor's memory interface.
 
+Core has all forwarding paths and full interlocks for data and control hazards;
 
+Coprocessor0 is partially implemented, six hardware interrupts + NMI in
+"Interrupt Compatibility Mode";
+
+The control instructions break, syscall, trap, mfc0, mtc0, eret, ei, di, ll, sc
+are fully implemented;
+
+Partial-word loads and stores (word, half-word, byte) implemented at the
+processor's memory interface;
+
+Testbench for tests includes processor, RAM, ROM and file I/O;
+
+Top level file for synthesis includes processor, RAM, ROM, LCD display and
+keyboard.  UART, SDRAM controller, VGA interface are in the works.
