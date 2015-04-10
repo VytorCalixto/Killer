@@ -6,26 +6,26 @@ The VHDL model mimics the pipeline design described in Patterson & Hennessy's
 book (Computer Organisation and Design) and is an (almost) complete
 implementation of the MIPS32r2 instruction set.
 
-The TLB and assorted control registers will be included soon (as of March 2015).
+The model was synthesized for an Altera EP4CE30F23.  The model runs at 50 MHz
+(top development board speed) and uses up 15% of combinational blocks and
+5% of logic registers in the FPGA.
 
-The model was synthesized for an Altera EP4CE30F23. The model uses up 15% of
-combinational blocks and 5% logic registers of the FPGA.
+Processor model runs C code, compiled with GCC;  there are scripts to
+compile and assemble code to run on the simulator or the FPGA.
 
-
-Processor model runs C code, compiled with GCC;
-
-Core has all forwarding paths and full interlocks for data and control hazards;
+Core has all forwarding paths and full interlocks for data and control hazards.
 
 Coprocessor0 is partially implemented, six hardware interrupts + NMI in
-"Interrupt Compatibility Mode";
+"Interrupt Compatibility Mode";  TLB implementation will be available soon.
 
 The control instructions break, syscall, trap, mfc0, mtc0, eret, ei, di, ll, sc
-are fully implemented;
+are fully implemented.
 
 Partial-word loads and stores (word, half-word, byte) implemented at the
-processor's memory interface;
+processor's memory interface.
 
-Testbench for tests includes processor, RAM, ROM and file I/O;
+Testbench for tests includes processor, RAM, ROM and (simulator) file I/O.
 
-Top level file for synthesis includes processor, RAM, ROM, LCD display and
-keyboard.  UART, SDRAM controller, VGA interface are in the works.
+Top level file for synthesis includes processor, RAM, ROM, LCD display,
+2x7segment LED display, keypad and UART.  TLB, SDRAM controller, VGA interface
+are in the works.
