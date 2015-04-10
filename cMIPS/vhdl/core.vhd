@@ -694,11 +694,12 @@ begin
                   (others => 'X') when others;
 
   with excp_PCsel select
-    PCinp <= PCinp_noExcp     when b"000",  -- no exception
-             EPC              when b"001",  -- ERET
-             x_EXCEPTION_0180 when b"010",  -- single exception handler
-             x_EXCEPTION_0200 when b"011",  -- separate interrupt handler
-             x_EXCEPTION_0000 when b"100",  -- NMI or soft-reset handler
+    PCinp <= PCinp_noExcp     when PCsel_EXC_none, -- no exception
+             EPC              when PCsel_EXC_EPC,  -- ERET
+             x_EXCEPTION_0100 when PCsel_EXC_0100, -- TLBmiss entry point
+             x_EXCEPTION_0180 when PCsel_EXC_0180, -- single exception handler
+             x_EXCEPTION_0200 when PCsel_EXC_0200, -- separate interrupt handler
+             x_EXCEPTION_0000 when PCsel_EXC_0000, -- NMI or soft-reset handler
              (others => 'X')  when others;
 
   IF_excp_type <= IFaddressError when PC(1 downto 0) /= b"00" else
@@ -1568,7 +1569,7 @@ begin
     newSTATUS    := STATUS;      
     i_epc_update := '1';
     i_epc_source := b"000";
-    i_excp_PCsel := b"000";     -- PC <= normal processing PC
+    i_excp_PCsel := PCsel_EXC_none;     -- PC <= normal processing PC
     i_update     := '0';
     i_update_r   := b"00000";
     i_a_c        := b"00000";
@@ -1645,7 +1646,7 @@ begin
         i_update     := '1';
         i_update_r   := cop0reg_STATUS;
         i_stall      := '0';
-        i_excp_PCsel := b"001";          -- PC <= EPC
+        i_excp_PCsel := PCsel_EXC_EPC;   -- PC <= EPC
         i_nullify    := '1';             -- nullify instructions in IF,RF
 
       when exTRAP | exSYSCALL | exBREAK =>   -- trap instruction
@@ -1684,7 +1685,7 @@ begin
           else
             i_epc_source := b"001";     -- RF_PC
           end if;
-          i_excp_PCsel := b"010";       -- PC <= exception_180
+          i_excp_PCsel := PCsel_EXC_0180;  -- PC <= exception_180
         else
           trap_taken <= '0';
         end if;
@@ -1708,7 +1709,7 @@ begin
         i_update        := '1';
         i_update_r      := cop0reg_STATUS;
         i_epc_update    := '0';
-        i_excp_PCsel    := b"010";      -- PC <= exception_0180
+        i_excp_PCsel    := PCsel_EXC_0180; -- PC <= exception_0180
         ExcCode         <= cop0code_Ov;
         i_nullify       := '1';         -- nullify instructions in IF,RF
         nullify_EX      <= '1';         -- and instruction in EX
@@ -1722,7 +1723,7 @@ begin
         i_update        := '1';
         i_update_r      := cop0reg_STATUS;
         i_epc_update    := '0';
-        i_excp_PCsel    := b"010";      -- PC <= exception_0180
+        i_excp_PCsel    := PCsel_EXC_0180; -- PC <= exception_0180
         BadVAddr_update <= '0';
         if is_exception = MMaddressErrorST then
           ExcCode <= cop0code_AdES;
@@ -1760,7 +1761,7 @@ begin
           else
             i_epc_source := b"001";     -- RF_PC
           end if;
-          i_excp_PCsel := b"100";       -- PC <= exception_0000
+          i_excp_PCsel := PCsel_EXC_0000; -- PC <= exception_0000
         
         elsif ( (STATUS(STATUS_EXL) = '0') and (STATUS(STATUS_ERL) = '0') and
                 (STATUS(STATUS_IE) = '1')  and (EX_interrupt = '1')  and
@@ -1783,9 +1784,9 @@ begin
             i_epc_source := b"001";     -- RF_PC
           end if;
           if CAUSE(CAUSE_IV) = '1' then
-            i_excp_PCsel := b"011";     -- PC <= exception_0200
+            i_excp_PCsel := PCsel_EXC_0200; -- PC <= exception_0200
           else
-            i_excp_PCsel := b"010";     -- PC <= exception_0180
+            i_excp_PCsel := PCsel_EXC_0180; -- PC <= exception_0180
           end if;
 
         end if; -- NMI or else interrupt 

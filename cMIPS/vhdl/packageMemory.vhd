@@ -44,7 +44,8 @@ package p_MEMORY is
   constant x_IO_MEM_SZ      : reg32   := x"00002000";
   constant x_IO_ADDR_RANGE  : reg32   := x"00000020";
   constant x_EXCEPTION_0000 : reg32   := x"00000080";
-  constant x_EXCEPTION_0180 : reg32   := x"000000c0";
+  constant x_EXCEPTION_0100 : reg32   := x"000000A0";
+  constant x_EXCEPTION_0180 : reg32   := x"000000C0";
   constant x_EXCEPTION_0200 : reg32   := x"00000140";
   constant x_ENTRY_POINT    : reg32   := x"00000300";
   -- end DO NOT change these names --
