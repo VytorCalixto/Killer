@@ -48,6 +48,379 @@ end core;
 
 architecture rtl of core is
 
+  -- control pipeline registers ------------ 
+  component reg_excp_IF_RF is
+    port(clk, rst, ld: in  std_logic;
+         IF_excp_type: in  exception_type;
+         RF_excp_type: out exception_type;
+         IF_PC:        in  std_logic_vector;
+         RF_PC:        out std_logic_vector);
+  end component reg_excp_IF_RF;
+
+  component reg_excp_RF_EX is
+    port(clk, rst, ld: in  std_logic;
+         RF_can_trap:     in  std_logic_vector;
+         EX_can_trap:     out std_logic_vector;
+         RF_exception:    in  exception_type;
+         EX_exception:    out exception_type;
+         RF_trap_instr:   in  instr_type;
+         EX_trap_instr:   out instr_type;
+         RF_cop0_reg:     in  std_logic_vector;
+         EX_cop0_reg:     out std_logic_vector;
+         RF_cop0_sel:     in  std_logic_vector;
+         EX_cop0_sel:     out std_logic_vector;
+         RF_is_delayslot: in  std_logic;
+         EX_is_delayslot: out std_logic;
+         RF_PC:           in  std_logic_vector;
+         EX_PC:           out std_logic_vector;
+         RF_nmi:          in  std_logic;
+         EX_nmi:          out std_logic;
+         RF_interrupt:    in  std_logic;
+         EX_interrupt:    out std_logic;
+         RF_int_req:      in  std_logic_vector;
+         EX_int_req:      out std_logic_vector;
+         RF_tr_is_equal:  in  std_logic;
+         EX_tr_is_equal:  out std_logic;
+         RF_tr_less_than: in  std_logic;
+         EX_tr_less_than: out std_logic);
+  end component reg_excp_RF_EX;
+
+  component reg_excp_EX_MM is
+    port(clk, rst, ld:  in  std_logic;
+         EX_can_trap:   in  std_logic_vector;
+         MM_can_trap:   out std_logic_vector;
+         EX_excp_type:  in  exception_type;
+         MM_excp_type:  out exception_type;
+         EX_PC:         in  std_logic_vector;
+         MM_PC:         out std_logic_vector;
+         EX_cop0_LLbit: in  std_logic;
+         MM_cop0_LLbit: out std_logic;
+         EX_cop0_a_c:   in  std_logic_vector;
+         MM_cop0_a_c:   out std_logic_vector;
+         EX_cop0_val:   in  std_logic_vector;
+         MM_cop0_val:   out std_logic_vector;
+         EX_trapped:    in  std_logic;
+         MM_ex_trapped: out std_logic);
+  end component reg_excp_EX_MM;
+
+  component reg_excp_MM_WB is
+    port(clk, rst, ld:  in  std_logic;
+         MM_can_trap:   in  std_logic_vector;
+         WB_can_trap:   out std_logic_vector;
+         MM_excp_type:  in  exception_type;
+         WB_excp_type:  out exception_type;
+         MM_PC:         in  std_logic_vector;
+         WB_PC:         out std_logic_vector;
+         MM_cop0_LLbit: in  std_logic;
+         WB_cop0_LLbit: out std_logic;
+         MM_abort:      in  std_logic;
+         WB_abort:      out std_logic;
+         MM_cop0_a_c:   in  std_logic_vector;
+         WB_cop0_a_c:   out std_logic_vector;
+         MM_cop0_val:   in  std_logic_vector;
+         WB_cop0_val:   out std_logic_vector);
+  end component reg_excp_MM_WB;
+
+  signal i_addr_error : std_logic;
+ 
+  signal interrupt,EX_interrupt, exception_stall : std_logic;
+  signal exception_taken, interrupt_taken, trap_taken : std_logic;
+  signal nullify, nullify_EX, abort, MM_abort,WB_abort : std_logic;
+  signal IF_excp_type,RF_excp_type,EX_excp_type,WB_excp_type: exception_type := exNOP;
+  signal MM_excp_type, MM_excp_type_i, MM_addr_error, MM_excp_TLB : exception_type;
+  signal trap_instr,EX_trap_instr: instr_type;
+  signal RF_PC,EX_PC,MM_PC,WB_PC, LLaddr: reg32;
+  signal EX_LLbit,MM_LLbit,WB_LLbit: std_logic;
+  signal LL_update,LL_SC_abort,LL_SC_differ,EX_trapped,MM_ex_trapped: std_logic;
+  signal int_req, EX_int_req: reg8;
+  signal RF_nmi,EX_nmi : std_logic;
+  signal can_trap,EX_can_trap,MM_can_trap,WB_can_trap: reg2;
+  signal is_trap, tr_signed, tr_stall: std_logic;
+  signal tr_is_equal,EX_tr_is_equal, tr_less_than,EX_tr_less_than: std_logic;
+  signal tr_fwd_A, tr_fwd_B, tr_result : reg32;
+  signal excp_IF_RF_ld,excp_RF_EX_ld,excp_EX_MM_ld,excp_MM_WB_ld: std_logic;
+  signal update, not_stalled: std_logic;
+  signal update_reg : reg5;
+  signal status_update,epc_update,compare_update: std_logic;
+  signal cause_update, disable_count, compare_set, compare_clr: std_logic;
+  signal STATUSinp,STATUS, CAUSEinp,CAUSE, EPCinp,EPC : reg32;
+  signal COUNT,COMPARE : reg32;
+  signal count_eq_compare,count_update,count_enable : std_logic;
+  signal exception,EX_exception,is_exception: exception_type := exNOP;
+  signal ExcCode : reg5 := cop0code_NULL;
+  signal exception_num, exception_dec : integer;       -- for debugging only
+  signal next_instr_in_delay_slot,EX_is_delayslot : std_logic;
+  signal cop0_sel, EX_cop0_sel, epc_source : reg3;
+  signal cop0_reg,EX_cop0_reg : reg5;
+  signal cop0_inp, RF_cop0_val,EX_cop0_val,MM_cop0_val,WB_cop0_val : reg32;
+  signal EX_cop0_a_c,MM_cop0_a_c,WB_cop0_a_c : reg5;
+  signal BadVAddr, BadVAddr_inp : reg32;
+  signal BadVAddr_update, BadVAddr_source : std_logic;
+
+  -- MMU signals --
+  signal INDEX, index_inp, RANDOM, WIRED, wired_inp : reg32;
+  signal index_update, wired_update : std_logic;
+  signal EntryLo0, EntryLo1, EntryLo0_inp, EntryLo1_inp : reg32;
+  signal EntryHi, EntryHi_inp : reg32;
+  signal Context, PageMask, Context_inp, PageMask_inp : reg32;
+  signal entryLo0_update, entryLo1_update, entryHi_update : std_logic;
+  signal context_update, tlb_read : std_logic;
+  signal tlb_entrylo0_mm,tlb_entrylo1_mm,tlb_context_mm,tlb_entryhi : reg32;
+  signal tlb_tag0_updt, tlb_tag1_updt, tlb_tag2_updt, tlb_tag3_updt : std_logic;
+  signal tlb_dat0_updt, tlb_dat1_updt, tlb_dat2_updt, tlb_dat3_updt : std_logic;
+  signal hit_pc, hit0_pc, hit1_pc, hit2_pc, hit3_pc : std_logic;
+  signal tlb_a0_pc, tlb_a1_pc, tlb_a2_pc : std_logic;
+  signal hit_mm, hit0_mm, hit1_mm, hit2_mm, hit3_mm : std_logic;
+  signal tlb_a0_mm, tlb_a1_mm, tlb_a2_mm : std_logic;
+  signal tlb_adr_pc, tlb_adr_mm, probe_adr : MMU_idx_bits;
+  signal tlb_probe, probe_hit : std_logic;
+  signal mm : std_logic_vector(VA_HI_BIT downto VA_LO_BIT);
+  signal tlb_adr : natural range 0 to (MMU_CAPACITY - 1);
+  signal tlb_ppn : std_logic_vector(PPN_BITS - 1 downto 0);
+  
+  signal tlb_tag_inp, tlb_tag0, tlb_tag1, tlb_tag2, tlb_tag3 : reg32;
+  signal tlb_dat_inp, tlb_dat0, tlb_dat1, tlb_dat2, tlb_dat3 : reg28;
+  signal tlb_entryLo0, tlb_entryLo1, phy_i_addr : reg32;
+  
+  -- other components ------------ 
+  
+  component FFD is
+    port(clk, rst, set, D : in std_logic; Q : out std_logic);
+  end component FFD;
+
+  component adder32 is
+    port(A, B : in  std_logic_vector;
+         C    : out std_logic_vector);
+  end component adder32;
+
+  component mf_alt_add_4 IS
+    port(datab : IN STD_LOGIC_VECTOR (31 DOWNTO 0);
+         result : OUT STD_LOGIC_VECTOR (31 DOWNTO 0) );
+  end component mf_alt_add_4;
+
+  component mf_alt_adder IS
+    port(dataa  : IN STD_LOGIC_VECTOR (31 DOWNTO 0);
+         datab  : IN STD_LOGIC_VECTOR (31 DOWNTO 0);
+         result : OUT STD_LOGIC_VECTOR (31 DOWNTO 0));
+  end component mf_alt_adder;
+
+  component subtr32 IS
+  port(A,B : in  std_logic_vector (31 downto 0);
+       C   : out std_logic_vector (31 downto 0);
+       sgnd    : in  std_logic;
+       ovfl,lt : out std_logic);
+  end component subtr32;
+  
+  component reg_bank is
+    port(wrclk, rdclk, wren: in  std_logic;
+         a_rs, a_rt, a_rd:   in  std_logic_vector;
+         C:                  in  std_logic_vector;
+         A, B:               out std_logic_vector);
+  end component reg_bank;
+  
+  component register32 is
+    generic (INITIAL_VALUE: std_logic_vector);
+    port(clk, rst, ld: in  std_logic;
+         D:            in  std_logic_vector;
+         Q:            out std_logic_vector);
+  end component register32;
+
+  component register28 is
+    generic (INITIAL_VALUE: std_logic_vector);
+    port(clk, rst, ld: in  std_logic;
+         D:            in  std_logic_vector;
+         Q:            out std_logic_vector);
+  end component register28;
+
+  component counter32 is
+    generic (INITIAL_VALUE: std_logic_vector);
+    port(clk, rst, ld, en: in  std_logic;
+         D:            in  std_logic_vector;
+         Q:            out std_logic_vector);
+  end component counter32;
+  
+  component alu is
+    port(clk, rst: in  std_logic;
+         A, B:     in  std_logic_vector;
+         C:        out std_logic_vector;
+         LO:       out std_logic_vector;
+         HI:       out std_logic_vector;
+         move_ok:  out std_logic;
+         fun:      in  t_alu_fun;
+         postn:    in  std_logic_vector;
+         shamt:    in  std_logic_vector;
+         ovfl:     out std_logic);
+  end component alu;
+
+  signal PC,PC_aligned : reg32;
+  signal PCinp,PCinp_noExcp, PCincd : reg32;
+  signal instr_fetched : reg32;
+  signal PCload, IF_RF_ld : std_logic;
+  signal PCsel : reg2;
+  signal excp_PCsel : reg3;
+
+  signal rom_stall, iaVal, if_stalled, stalled : std_logic;
+  signal ram_stall, daVal, mm_stalled : std_logic;
+  signal br_target, br_addend, br_tgt_pl4, br_tgt_displ, j_target : reg32;
+  signal RF_PCincd, RF_instruction : reg32;
+  signal eq_fwd_A,eq_fwd_B : reg32;
+  
+  -- register fetch/read and instruction decode --  
+  component reg_IF_RF is
+    port(clk, rst, ld: in  std_logic;
+         PCincd_d:     in  std_logic_vector;
+         PCincd_q:     out std_logic_vector;
+         instr:        in  std_logic_vector;
+         RF_instr:     out std_logic_vector);
+  end component reg_IF_RF;
+
+  signal opcode, func: reg6;
+  signal ctrl_word:  t_control_type;
+  signal funct_word: t_function_type;
+  signal rimm_word:  t_rimm_type;
+  signal syscall_n : reg20;
+  signal displ16: reg16;
+  signal br_operand: reg32;
+  signal br_opr: reg2;
+  signal br_equal,br_negative,br_eq_zero: boolean;
+  signal flush_RF_EX: boolean := FALSE;
+  signal is_branch: std_logic;
+  signal c_sel : reg2;
+  
+  -- execution and beyond --  
+  signal RF_EX_ld, EX_MM_ld, MM_WB_ld: std_logic;
+  signal a_rs,EX_a_rs, a_rt,EX_a_rt,MM_a_rt, a_rd: reg5;
+  signal a_c,EX_a_c,MM_a_c,WB_a_c: reg5;
+  signal move,EX_move,MM_move, is_load,EX_is_load : std_logic;
+  signal muxC,EX_muxC,MM_muxC,WB_muxC: reg3;
+  signal wreg,EX_wreg_pre,EX_wreg,MM_wreg_cond,MM_wreg,WB_wreg: std_logic;
+  signal aVal,EX_aVal,EX_aVal_cond,MM_aVal: std_logic;
+  signal wrmem,EX_wrmem,EX_wrmem_cond,MM_wrmem, m_sign_ext: std_logic;
+  signal mem_t, EX_mem_t,MM_mem_t: reg4;
+  signal WB_mem_t : reg2;
+
+  signal alu_inp_A,alu_fwd_B,alu_inp_B : reg32;
+  signal alu_move_ok, MM_alu_move_ok, ovfl,MM_ovfl : std_logic;
+  
+  signal selB,EX_selB:  std_logic;
+  signal oper,EX_oper: t_alu_fun;
+  signal EX_postn, shamt,EX_shamt: reg5;
+  signal regs_A,EX_A,MM_A,WB_A, regs_B,EX_B,MM_B:reg32;
+  signal displ32,EX_displ32: reg32;
+  signal result,MM_result,WB_result,WB_C: reg32;
+  signal pc_p8,EX_pc_p8,MM_pc_p8,WB_pc_p8 : reg32;
+  signal HI,MM_HI,WB_HI, LO,MM_LO,WB_LO : reg32;
+
+  -- data memory --
+  signal rd_data_raw, rd_data, WB_rd_data, WB_mem_data: reg32;
+  signal MM_B_data, WB_B_data: reg32;
+  signal jr_stall, br_stall, fwd_lwlr, sw_stall : std_logic;
+  signal fwd_mem, WB_addr2: reg2;
+
+
+  component reg_RF_EX is
+    port(clk, rst, ld: in  std_logic;
+         selB:       in  std_logic;
+         EX_selB:    out std_logic;
+         oper:       in  t_alu_fun;
+         EX_oper:    out t_alu_fun;
+         a_rs:       in  std_logic_vector;
+         EX_a_rs:    out std_logic_vector;
+         a_rt:       in  std_logic_vector;
+         EX_a_rt:    out std_logic_vector;
+         a_c:        in  std_logic_vector;
+         EX_a_c:     out std_logic_vector;
+         wreg:       in  std_logic;
+         EX_wreg:    out std_logic;
+         muxC:       in  std_logic_vector;
+         EX_muxC:    out std_logic_vector;
+         move:       in  std_logic;
+         EX_move:    out std_logic;
+         postn:      in  std_logic_vector;
+         EX_postn:   out std_logic_vector;
+         shamt:      in  std_logic_vector;
+         EX_shamt:   out std_logic_vector;
+         aVal:       in  std_logic;
+         EX_aVal:    out std_logic;
+         wrmem:      in  std_logic;
+         EX_wrmem:   out std_logic;
+         mem_t:      in  std_logic_vector;
+         EX_mem_t:   out std_logic_vector;
+         is_load:    in  std_logic;
+         EX_is_load: out std_logic;
+         A:          in  std_logic_vector;
+         EX_A:       out std_logic_vector;
+         B:          in  std_logic_vector;
+         EX_B:       out std_logic_vector;
+         displ32:    in  std_logic_vector;
+         EX_displ32: out std_logic_vector;
+         pc_p8:      in  std_logic_vector;
+         EX_pc_p8:   out std_logic_vector);
+  end component reg_RF_EX;
+      
+  component reg_EX_MM is
+    port(clk, rst, ld: in  std_logic;
+         EX_a_rt:    in  std_logic_vector;
+         MM_a_rt:    out std_logic_vector;
+         EX_a_c:     in  std_logic_vector;
+         MM_a_c:     out std_logic_vector;
+         EX_wreg:    in  std_logic;
+         MM_wreg:    out std_logic;
+         EX_muxC:    in  std_logic_vector;
+         MM_muxC:    out std_logic_vector;
+         EX_aVal:    in  std_logic;
+         MM_aVal:    out std_logic;
+         EX_wrmem:   in  std_logic;
+         MM_wrmem:   out std_logic;
+         EX_mem_t:   in  std_logic_vector;
+         MM_mem_t:   out std_logic_vector;
+         EX_A:       in  std_logic_vector;
+         MM_A:       out std_logic_vector;
+         EX_B:       in  std_logic_vector;
+         MM_B:       out std_logic_vector;
+         EX_result:  in  std_logic_vector;
+         MM_result:  out std_logic_vector;
+         HI:         in  std_logic_vector;
+         MM_HI:      out std_logic_vector;
+         LO:         in  std_logic_vector;
+         MM_LO:      out std_logic_vector;
+         EX_alu_move_ok: in  std_logic;
+         MM_alu_move_ok: out std_logic;
+         EX_move:    in  std_logic;
+         MM_move:    out std_logic;
+         EX_pc_p8:   in  std_logic_vector;
+         MM_pc_p8:   out std_logic_vector);
+  end component reg_EX_MM;
+  
+  component reg_MM_WB is
+    port(clk, rst, ld: in  std_logic;
+         MM_a_c:     in  std_logic_vector;
+         WB_a_c:     out std_logic_vector;
+         MM_wreg:    in  std_logic;
+         WB_wreg:    out std_logic;
+         MM_muxC:    in  std_logic_vector;
+         WB_muxC:    out std_logic_vector;
+         MM_A:       in  std_logic_vector;
+         WB_A:       out std_logic_vector;
+         MM_result:  in  std_logic_vector;
+         WB_result:  out std_logic_vector;
+         MM_HI:      in  std_logic_vector;
+         WB_HI:      out std_logic_vector;
+         MM_LO:      in  std_logic_vector;
+         WB_LO:      out std_logic_vector;
+         rd_data:    in  std_logic_vector;
+         WB_rd_data: out std_logic_vector;
+         MM_B_data:  in  std_logic_vector;
+         WB_B_data:  out std_logic_vector;
+         MM_addr2:   in  std_logic_vector;
+         WB_addr2:   out std_logic_vector;
+         MM_oper:    in  std_logic_vector;
+         WB_oper:    out std_logic_vector;
+         MM_pc_p8:   in  std_logic_vector;
+         WB_pc_p8:   out std_logic_vector);
+  end component reg_MM_WB;
+
+
 -- fields of the control table
 --    aVal:  std_logic;        -- addressValid, enable data-mem=0
 --    wmem:  std_logic;        -- READ=1/WRITE=0 in/to memory
@@ -145,7 +518,7 @@ architecture rtl of core is
   
   constant func_table : t_function_mem := (
   -- i    wreg selB oper   muxC trap mov syn PCsel excp
-    (iSLL, '0','0',opSLL,  "001",'0','0','0',"00","00"),  --sll=0
+    (iSLL, '0','0',opSLL,  "001",'1','0','0',"00","00"),  --sll=0, EHB
     (NIL,  '1','0',opNOP,  "001",'0','0','0',"00","00"),  --1, FlPoint
     (iSRL, '0','0',opSRL,  "001",'0','0','0',"00","00"),  --srl=2
     (iSRA, '0','0',opSRA,  "001",'0','0','0',"00","00"),  --sra=3
@@ -267,7 +640,7 @@ architecture rtl of core is
     '0'&        -- BE, little endian = 0
     b"00"&      -- AT, MIPS32 = 0
     b"001"&     -- AR, Release 2 = 1
-    b"000"&     -- MT, MMU type = 0, none
+    b"001"&     -- MT, MMU type = 1, standard
     b"000"&     -- nil, always zero = 0
     '1'&        -- VI, Instruction Cache is virtual = 1
     b"000"      -- K0, Kseg0 coherency algorithm
@@ -275,8 +648,8 @@ architecture rtl of core is
 
   -- Table 8-31 Config1 Register Field Descriptions, pg 103
   constant CONFIG1 : reg32 := (
-    '0'&               -- M, Config2 implemented = 0
-    b"000000"&         -- MMUsz, MMU entries minus 1
+    '0'&               -- M, Config2 not implemented = 0
+    MMU_SIZE         & -- MMUsz, MMU entries minus 1
     IC_SETS_PER_WAY  & -- ICS, IC sets per way
     IC_LINE_SIZE     & -- ICL, IC line size
     IC_ASSOCIATIVITY & -- ICA, IC associativity
@@ -292,353 +665,7 @@ architecture rtl of core is
     '0'         -- FP, No FPU implemented = 0
     );
 
-   
-  -- control pipeline registers ------------ 
-  component reg_excp_IF_RF is
-    port(clk, rst, ld: in  std_logic;
-         IF_excp_type: in  exception_type;
-         RF_excp_type: out exception_type;
-         IF_PC:        in  std_logic_vector;
-         RF_PC:        out std_logic_vector);
-  end component reg_excp_IF_RF;
-
-  component reg_excp_RF_EX is
-    port(clk, rst, ld: in  std_logic;
-         RF_can_trap:     in  std_logic_vector;
-         EX_can_trap:     out std_logic_vector;
-         RF_exception:    in  exception_type;
-         EX_exception:    out exception_type;
-         RF_trap_instr:   in  instr_type;
-         EX_trap_instr:   out instr_type;
-         RF_cop0_reg:     in  std_logic_vector;
-         EX_cop0_reg:     out std_logic_vector;
-         RF_cop0_sel:     in  std_logic_vector;
-         EX_cop0_sel:     out std_logic_vector;
-         RF_is_delayslot: in  std_logic;
-         EX_is_delayslot: out std_logic;
-         RF_PC:           in  std_logic_vector;
-         EX_PC:           out std_logic_vector;
-         RF_nmi:          in  std_logic;
-         EX_nmi:          out std_logic;
-         RF_interrupt:    in  std_logic;
-         EX_interrupt:    out std_logic;
-         RF_int_req:      in  std_logic_vector;
-         EX_int_req:      out std_logic_vector;
-         RF_tr_is_equal:  in  std_logic;
-         EX_tr_is_equal:  out std_logic;
-         RF_tr_less_than: in  std_logic;
-         EX_tr_less_than: out std_logic);
-  end component reg_excp_RF_EX;
-
-  component reg_excp_EX_MM is
-    port(clk, rst, ld:  in  std_logic;
-         EX_can_trap:   in  std_logic_vector;
-         MM_can_trap:   out std_logic_vector;
-         EX_excp_type:  in  exception_type;
-         MM_excp_type:  out exception_type;
-         EX_PC:         in  std_logic_vector;
-         MM_PC:         out std_logic_vector;
-         EX_cop0_LLbit: in  std_logic;
-         MM_cop0_LLbit: out std_logic;
-         EX_cop0_a_c:   in  std_logic_vector;
-         MM_cop0_a_c:   out std_logic_vector;
-         EX_cop0_val:   in  std_logic_vector;
-         MM_cop0_val:   out std_logic_vector;
-         EX_trapped:    in  std_logic;
-         MM_ex_trapped: out std_logic);
-  end component reg_excp_EX_MM;
-
-  component reg_excp_MM_WB is
-    port(clk, rst, ld:  in  std_logic;
-         MM_can_trap:   in  std_logic_vector;
-         WB_can_trap:   out std_logic_vector;
-         MM_excp_type:  in  exception_type;
-         WB_excp_type:  out exception_type;
-         MM_PC:         in  std_logic_vector;
-         WB_PC:         out std_logic_vector;
-         MM_cop0_LLbit: in  std_logic;
-         WB_cop0_LLbit: out std_logic;
-         MM_abort:      in  std_logic;
-         WB_abort:      out std_logic;
-         MM_cop0_a_c:   in  std_logic_vector;
-         WB_cop0_a_c:   out std_logic_vector;
-         MM_cop0_val:   in  std_logic_vector;
-         WB_cop0_val:   out std_logic_vector);
-  end component reg_excp_MM_WB;
-
-  signal i_addr_error : std_logic;
- 
-  signal interrupt,EX_interrupt, exception_stall : std_logic;
-  signal exception_taken, interrupt_taken, trap_taken : std_logic;
-  signal nullify, nullify_EX, abort, MM_abort,WB_abort : std_logic;
-  signal IF_excp_type,RF_excp_type,EX_excp_type,WB_excp_type: exception_type := exNOP;
-  signal MM_excp_type, MM_excp_type_i, MM_addr_error, MM_excp_TLB : exception_type;
-  signal trap_instr,EX_trap_instr: instr_type;
-  signal RF_PC,EX_PC,MM_PC,WB_PC, LLaddr: reg32;
-  signal EX_LLbit,MM_LLbit,WB_LLbit: std_logic;
-  signal LL_update,LL_SC_abort,LL_SC_differ,EX_trapped,MM_ex_trapped: std_logic;
-  signal int_req, EX_int_req: reg8;
-  signal RF_nmi,EX_nmi : std_logic;
-  signal can_trap,EX_can_trap,MM_can_trap,WB_can_trap: reg2;
-  signal is_trap, tr_signed, tr_stall: std_logic;
-  signal tr_is_equal,EX_tr_is_equal, tr_less_than,EX_tr_less_than: std_logic;
-  signal tr_fwd_A, tr_fwd_B, tr_result : reg32;
-  signal excp_IF_RF_ld,excp_RF_EX_ld,excp_EX_MM_ld,excp_MM_WB_ld: std_logic;
-  signal update, not_stalled: std_logic;
-  signal update_reg : reg5;
-  signal status_update,epc_update,compare_update: std_logic;
-  signal cause_update, disable_count, compare_set, compare_clr: std_logic;
-  signal STATUSinp,STATUS, CAUSEinp,CAUSE, EPCinp,EPC : reg32;
-  signal COUNT,COMPARE : reg32;
-  signal count_eq_compare,count_update,count_enable : std_logic;
-  signal exception,EX_exception,is_exception: exception_type := exNOP;
-  signal ExcCode : reg5 := cop0code_NULL;
-  signal exception_num, exception_dec : integer;       -- for debugging only
-  signal next_instr_in_delay_slot,EX_is_delayslot : std_logic;
-  signal cop0_sel, EX_cop0_sel, epc_source : reg3;
-  signal cop0_reg,EX_cop0_reg : reg5;
-  signal cop0_inp, RF_cop0_val,EX_cop0_val,MM_cop0_val,WB_cop0_val : reg32;
-  signal EX_cop0_a_c,MM_cop0_a_c,WB_cop0_a_c : reg5;
-  signal BadVAddr, BadVAddr_inp : reg32;
-  signal BadVAddr_update, BadVAddr_source : std_logic;
-
   
-  -- other components ------------ 
-  
-  component FFD is
-    port(clk, rst, set, D : in std_logic; Q : out std_logic);
-  end component FFD;
-
-  component adder32 is
-    port(A, B : in  std_logic_vector;
-         C    : out std_logic_vector);
-  end component adder32;
-
-  component mf_alt_add_4 IS
-    port(datab : IN STD_LOGIC_VECTOR (31 DOWNTO 0);
-         result : OUT STD_LOGIC_VECTOR (31 DOWNTO 0) );
-  end component mf_alt_add_4;
-
-  component mf_alt_adder IS
-    port(dataa  : IN STD_LOGIC_VECTOR (31 DOWNTO 0);
-         datab  : IN STD_LOGIC_VECTOR (31 DOWNTO 0);
-         result : OUT STD_LOGIC_VECTOR (31 DOWNTO 0));
-  end component mf_alt_adder;
-
-  component subtr32 IS
-  port(A,B : in  std_logic_vector (31 downto 0);
-       C   : out std_logic_vector (31 downto 0);
-       sgnd    : in  std_logic;
-       ovfl,lt : out std_logic);
-  end component subtr32;
-  
-  component reg_bank is
-    port(wrclk, rdclk, wren: in  std_logic;
-         a_rs, a_rt, a_rd:   in  std_logic_vector;
-         C:                  in  std_logic_vector;
-         A, B:               out std_logic_vector);
-  end component reg_bank;
-  
-  component register32 is
-    generic (INITIAL_VALUE: std_logic_vector);
-    port(clk, rst, ld: in  std_logic;
-         D:            in  std_logic_vector;
-         Q:            out std_logic_vector);
-  end component register32;
-
-  component counter32 is
-    generic (INITIAL_VALUE: std_logic_vector);
-    port(clk, rst, ld, en: in  std_logic;
-         D:            in  std_logic_vector;
-         Q:            out std_logic_vector);
-  end component counter32;
-  
-  component alu is
-    port(clk, rst: in  std_logic;
-         A, B:     in  std_logic_vector;
-         C:        out std_logic_vector;
-         LO:       out std_logic_vector;
-         HI:       out std_logic_vector;
-         move_ok:  out std_logic;
-         fun:      in  t_alu_fun;
-         postn:    in  std_logic_vector;
-         shamt:    in  std_logic_vector;
-         ovfl:     out std_logic);
-  end component alu;
-
-  signal PC,PC_aligned : reg32;
-  signal PCinp,PCinp_noExcp, PCincd : reg32;
-  signal instr_fetched : reg32;
-  signal PCload, IF_RF_ld : std_logic;
-  signal PCsel : reg2;
-  signal excp_PCsel : reg3;
-
-  signal rom_stall, iaVal, if_stalled, stalled : std_logic;
-  signal ram_stall, daVal, mm_stalled : std_logic;
-  signal br_target, br_addend, br_tgt_pl4, br_tgt_displ, j_target : reg32;
-  signal RF_PCincd, RF_instruction : reg32;
-  signal eq_fwd_A,eq_fwd_B : reg32;
-
-  -- register fetch/read and instruction decode --  
-  component reg_IF_RF is
-    port(clk, rst, ld: in  std_logic;
-         PCincd_d:     in  std_logic_vector;
-         PCincd_q:     out std_logic_vector;
-         instr:        in  std_logic_vector;
-         RF_instr:     out std_logic_vector);
-  end component reg_IF_RF;
-
-  signal opcode, func: reg6;
-  signal ctrl_word:  t_control_type;
-  signal funct_word: t_function_type;
-  signal rimm_word:  t_rimm_type;
-  signal syscall_n : reg20;
-  signal displ16: reg16;
-  signal br_operand: reg32;
-  signal br_opr: reg2;
-  signal br_equal,br_negative,br_eq_zero: boolean;
-  signal flush_RF_EX: boolean := FALSE;
-  signal is_branch: std_logic;
-  -- attribute BUFFERED of is_branch : signal is "HIGH_DRIVE";
-  signal c_sel : reg2;
-  
-  -- execution and beyond --  
-  signal RF_EX_ld, EX_MM_ld, MM_WB_ld: std_logic;
-  signal a_rs,EX_a_rs, a_rt,EX_a_rt,MM_a_rt, a_rd: reg5;
-  signal a_c,EX_a_c,MM_a_c,WB_a_c: reg5;
-  signal move,EX_move,MM_move, is_load,EX_is_load : std_logic;
-  signal muxC,EX_muxC,MM_muxC,WB_muxC: reg3;
-  signal wreg,EX_wreg_pre,EX_wreg,MM_wreg_cond,MM_wreg,WB_wreg: std_logic;
-  signal aVal,EX_aVal,EX_aVal_cond,MM_aVal: std_logic;
-  signal wrmem,EX_wrmem,EX_wrmem_cond,MM_wrmem, m_sign_ext: std_logic;
-  signal mem_t, EX_mem_t,MM_mem_t: reg4;
-  signal WB_mem_t : reg2;
-  -- attribute CLOCK_SIGNAL of MM_wrmem : signal is "no";
-  -- attribute BUFFERED     of MM_wrmem : signal is "HIGH_DRIVE";
-
-  signal alu_inp_A,alu_fwd_B,alu_inp_B : reg32;
-  signal alu_move_ok, MM_alu_move_ok, ovfl,MM_ovfl : std_logic;
-  
-  signal selB,EX_selB:  std_logic;
-  signal oper,EX_oper: t_alu_fun;
-  signal EX_postn, shamt,EX_shamt: reg5;
-  signal regs_A,EX_A,MM_A,WB_A, regs_B,EX_B,MM_B:reg32;
-  signal displ32,EX_displ32: reg32;
-  signal result,MM_result,WB_result,WB_C: reg32;
-  signal pc_p8,EX_pc_p8,MM_pc_p8,WB_pc_p8 : reg32;
-  signal HI,MM_HI,WB_HI, LO,MM_LO,WB_LO : reg32;
-
-  -- data memory --
-  signal rd_data_raw, rd_data, WB_rd_data, WB_mem_data: reg32;
-  signal MM_B_data, WB_B_data: reg32;
-  signal jr_stall, br_stall, fwd_lwlr, sw_stall : std_logic;
-  -- attribute CLOCK_SIGNAL of rom_stall,ram_stall : signal is "no";
-  -- attribute BUFFERED     of rom_stall,ram_stall : signal is "HIGH_DRIVE";
-  signal fwd_mem, WB_addr2: reg2;
-
-
-  component reg_RF_EX is
-    port(clk, rst, ld: in  std_logic;
-         selB:       in  std_logic;
-         EX_selB:    out std_logic;
-         oper:       in  t_alu_fun;
-         EX_oper:    out t_alu_fun;
-         a_rs:       in  std_logic_vector;
-         EX_a_rs:    out std_logic_vector;
-         a_rt:       in  std_logic_vector;
-         EX_a_rt:    out std_logic_vector;
-         a_c:        in  std_logic_vector;
-         EX_a_c:     out std_logic_vector;
-         wreg:       in  std_logic;
-         EX_wreg:    out std_logic;
-         muxC:       in  std_logic_vector;
-         EX_muxC:    out std_logic_vector;
-         move:       in  std_logic;
-         EX_move:    out std_logic;
-         postn:      in  std_logic_vector;
-         EX_postn:   out std_logic_vector;
-         shamt:      in  std_logic_vector;
-         EX_shamt:   out std_logic_vector;
-         aVal:       in  std_logic;
-         EX_aVal:    out std_logic;
-         wrmem:      in  std_logic;
-         EX_wrmem:   out std_logic;
-         mem_t:      in  std_logic_vector;
-         EX_mem_t:   out std_logic_vector;
-         is_load:    in  std_logic;
-         EX_is_load: out std_logic;
-         A:          in  std_logic_vector;
-         EX_A:       out std_logic_vector;
-         B:          in  std_logic_vector;
-         EX_B:       out std_logic_vector;
-         displ32:    in  std_logic_vector;
-         EX_displ32: out std_logic_vector;
-         pc_p8:      in  std_logic_vector;
-         EX_pc_p8:   out std_logic_vector);
-  end component reg_RF_EX;
-      
-  component reg_EX_MM is
-    port(clk, rst, ld: in  std_logic;
-         EX_a_rt:    in  std_logic_vector;
-         MM_a_rt:    out std_logic_vector;
-         EX_a_c:     in  std_logic_vector;
-         MM_a_c:     out std_logic_vector;
-         EX_wreg:    in  std_logic;
-         MM_wreg:    out std_logic;
-         EX_muxC:    in  std_logic_vector;
-         MM_muxC:    out std_logic_vector;
-         EX_aVal:    in  std_logic;
-         MM_aVal:    out std_logic;
-         EX_wrmem:   in  std_logic;
-         MM_wrmem:   out std_logic;
-         EX_mem_t:   in  std_logic_vector;
-         MM_mem_t:   out std_logic_vector;
-         EX_A:       in  std_logic_vector;
-         MM_A:       out std_logic_vector;
-         EX_B:       in  std_logic_vector;
-         MM_B:       out std_logic_vector;
-         EX_result:  in  std_logic_vector;
-         MM_result:  out std_logic_vector;
-         HI:         in  std_logic_vector;
-         MM_HI:      out std_logic_vector;
-         LO:         in  std_logic_vector;
-         MM_LO:      out std_logic_vector;
-         EX_alu_move_ok: in  std_logic;
-         MM_alu_move_ok: out std_logic;
-         EX_move:    in  std_logic;
-         MM_move:    out std_logic;
-         EX_pc_p8:   in  std_logic_vector;
-         MM_pc_p8:   out std_logic_vector);
-  end component reg_EX_MM;
-  
-  component reg_MM_WB is
-    port(clk, rst, ld: in  std_logic;
-         MM_a_c:     in  std_logic_vector;
-         WB_a_c:     out std_logic_vector;
-         MM_wreg:    in  std_logic;
-         WB_wreg:    out std_logic;
-         MM_muxC:    in  std_logic_vector;
-         WB_muxC:    out std_logic_vector;
-         MM_A:       in  std_logic_vector;
-         WB_A:       out std_logic_vector;
-         MM_result:  in  std_logic_vector;
-         WB_result:  out std_logic_vector;
-         MM_HI:      in  std_logic_vector;
-         WB_HI:      out std_logic_vector;
-         MM_LO:      in  std_logic_vector;
-         WB_LO:      out std_logic_vector;
-         rd_data:    in  std_logic_vector;
-         WB_rd_data: out std_logic_vector;
-         MM_B_data:  in  std_logic_vector;
-         WB_B_data:  out std_logic_vector;
-         MM_addr2:   in  std_logic_vector;
-         WB_addr2:   out std_logic_vector;
-         MM_oper:    in  std_logic_vector;
-         WB_oper:    out std_logic_vector;
-         MM_pc_p8:   in  std_logic_vector;
-         WB_pc_p8:   out std_logic_vector);
-  end component reg_MM_WB;
-
 -- pipeline ============================================================
 begin
 
@@ -1002,6 +1029,10 @@ begin
           case funct_word.i is
             when SYSCALL => i_exception := exSYSCALL;
             when BREAK   => i_exception := exBREAK;
+            when iSLL    =>
+              if RF_instruction = x"000000c0" then 
+                i_exception := exEHB;
+              end if; 
             when others  => i_exception := exTRAP;
           end case;
         end if;
@@ -1030,18 +1061,23 @@ begin
             i_wreg     := '0';
           when b"10000" =>              -- ERET
             case func is
+              when b"000001" => i_exception := exTLBR;
+              when b"000010" => i_exception := exTLBWI;
+              when b"000110" => i_exception := exTLBWR;
+              when b"001000" => i_exception := exTLBP;
               when b"011000" => i_exception := exERET;
+              when b"011111" => i_exception := exDERET;
               when b"100000" => i_exception := exWAIT;
               when others =>    i_exception := exRESV_INSTR;
             end case;
           when b"01011" =>              -- EI and DI
             case func is
               when b"100000" =>    -- EI;
-              i_exception := exEI;
-              i_wreg := '0';
+                i_exception := exEI;
+                i_wreg := '0';
               when b"000000" =>    -- DI;
-              i_exception := exDI;
-              i_wreg := '0';
+                i_exception := exDI;
+                i_wreg := '0';
               when others => i_exception := exRESV_INSTR;
             end case;
           when others => i_exception := exRESV_INSTR;
@@ -1530,7 +1566,7 @@ begin
     end if;
   end process RF_FORWARDING_TRAPS;
 
-  
+
   -- ----------------------------------------------------------------------    
   PIPESTAGE_EXCP_RF_EX: reg_excp_RF_EX
     port map (clk, rst, excp_RF_EX_ld, can_trap,EX_can_trap,
@@ -1586,6 +1622,12 @@ begin
     BadVAddr_source <= '0';
     BadVAddr_update <= '1';
 
+    newSTATUS(STATUS_BEV) := '0';  -- interrupts at offset 0x200
+    newSTATUS(STATUS_CU3) := '0';  -- COP-3 absent (always)
+    newSTATUS(STATUS_CU2) := '0';  -- COP-2 absent (always)
+    newSTATUS(STATUS_CU1) := '0';  -- COP-1 absent (always)
+    newSTATUS(STATUS_CU0) := '1';  -- COP-0 present=1 (always)
+    
     case is_exception is
 
       when exMTC0 =>            -- move to COP-0
@@ -1595,13 +1637,17 @@ begin
             newSTATUS := cop0_inp;
             i_update   := '1';
             i_stall    := '1';
-          when cop0reg_COUNT | cop0reg_COMPARE | cop0reg_CAUSE =>
+          when cop0reg_COUNT    | cop0reg_COMPARE  | cop0reg_CAUSE   |
+               cop0reg_EntryLo0 | cop0reg_EntryLo1 | cop0reg_EntryHi =>
             i_update   := '1';
             i_stall    := '1';
+          when cop0reg_Index  | cop0reg_Context | cop0reg_Wired =>
+            i_update   := '1';
+            i_stall    := '0';
           when cop0reg_EPC =>
             i_epc_update := '0';
             i_epc_source := b"100";     -- EX_B
-            i_stall      := '1';
+            i_stall      := '0';
           when others =>
             i_stall  := '0';
             i_update := '0';
@@ -1625,6 +1671,14 @@ begin
 
       when exMFC0 =>            -- move from COP-0
         case EX_cop0_reg is
+          when cop0reg_Index    => i_COP0_rd := INDEX;
+          when cop0reg_Random   => i_COP0_rd := RANDOM;
+          when cop0reg_EntryLo0 => i_COP0_rd := EntryLo0;
+          when cop0reg_EntryLo1 => i_COP0_rd := EntryLo1;
+          when cop0reg_Context  => i_COP0_rd := CONTEXT;
+          when cop0reg_PageMask => i_COP0_rd := PAGEMASK;
+          when cop0reg_Wired    => i_COP0_rd := WIRED;
+          when cop0reg_EntryHi  => i_COP0_rd := EntryHi;
           when cop0reg_COUNT    => i_COP0_rd := COUNT;
           when cop0reg_COMPARE  => i_COP0_rd := COMPARE;
           when cop0reg_STATUS   => i_COP0_rd := STATUS;
@@ -1640,17 +1694,17 @@ begin
           when others           => i_COP0_rd := (others => 'X');
         end case;
         i_a_c   := EX_a_rt;
-        i_stall := '1';
+        i_stall := '0';
 
       when exERET =>            -- exception return
         i_update     := '1';
         i_update_r   := cop0reg_STATUS;
-        i_stall      := '0';
-        i_excp_PCsel := PCsel_EXC_EPC;   -- PC <= EPC
-        i_nullify    := '1';             -- nullify instructions in IF,RF
-
+        i_stall      := '0';            -- do not stall
+        i_excp_PCsel := PCsel_EXC_EPC;  -- PC <= EPC
+        i_nullify    := '1';            -- nullify instructions in IF,RF
+        newSTATUS(STATUS_EXL) := '0';   -- leave exception level
+        
       when exTRAP | exSYSCALL | exBREAK =>   -- trap instruction
-        ExcCode <= cop0code_Tr;
         i_stall    := '0';
         case EX_trap_instr is
           when TEQ | TEQI =>
@@ -1663,15 +1717,20 @@ begin
             i_take_trap := not(EX_tr_less_than);
           when SYSCALL =>
             i_take_trap := '1';
-            ExcCode     <= cop0code_Sys;
           when BREAK =>
             i_take_trap := '1';
-            ExcCode     <= cop0code_Bp;
           when others =>
             i_take_trap := '0';
         end case;
         if  i_take_trap = '1' then
           trap_taken <= '1';
+          case EX_trap_instr is
+            when TEQ | TEQI | TNE | TNEI | TLT | TLTI | TLTU | TLTIU |
+                 TGE | TGEI | TGEU | TGEIU =>  ExcCode <= cop0code_Tr;
+            when SYSCALL => ExcCode <= cop0code_Sys;
+            when BREAK   => ExcCode <= cop0code_Bp;
+            when others  => null;
+          end case;  
           newSTATUS(STATUS_EXL) := '1';   -- at exception level
           newSTATUS(STATUS_UM)  := '0';   -- enter kernel mode          
           newSTATUS(STATUS_IE)  := '0';   -- disable interrupts
@@ -1695,7 +1754,7 @@ begin
         i_update_r := cop0reg_LLaddr;
 
       -- when exSC => null; if treated here, SC might delay an interrupt
-        
+
 
       when exRESV_INSTR =>      -- reserved instruction ABORT SIMULATION
           assert true                   -- invalid opcode
@@ -1738,8 +1797,15 @@ begin
           i_epc_source    := b"011";    -- bad address is in EXCP_MM_PC
           badVAddr_source <= '1';       -- load/store
         end if;
+
+      when exEHB =>                     -- stall processor to clear hazards
+        i_stall    := '1';
+
+
+      when exTLBP | exTLBR | exTLBWI | exTLBWR =>  -- TLB access
+        i_stall := '1';                 -- stall the processor
         
-          
+        
       when others =>                    -- interrupt pending?
 
         if ( (EX_nmi = '1') and (STATUS(STATUS_ERL) = '0') ) then
@@ -1793,22 +1859,22 @@ begin
 
     end case;
 
-    newSTATUS(STATUS_CU3) := '0';  -- COP-3 absent (always)
-    newSTATUS(STATUS_CU2) := '0';  -- COP-2 absent (always)
-    newSTATUS(STATUS_CU1) := '0';  -- COP-1 absent (always)
-    newSTATUS(STATUS_CU0) := '1';  -- COP-0 present=1 (always)
-
-
     STATUSinp    <= newSTATUS;
     EX_cop0_val  <= i_COP0_rd;
     EX_cop0_a_c  <= i_a_c;              -- only for forwarding COP0 values
     update       <= i_update;
     update_reg   <= i_update_r;
-    epc_update   <= i_epc_update;
+
+    if is_exception = exMTC0 and EX_cop0_reg = cop0reg_EPC then
+      epc_update   <= i_epc_update;
+    else
+      epc_update   <= i_epc_update OR STATUS(STATUS_EXL);
+    end if;
     epc_source   <= i_epc_source;
     excp_PCsel   <= i_excp_PCsel;
+
     exception_stall <= i_stall;
-    nullify      <= i_nullify;
+    nullify         <= i_nullify;
     
   end process COP0_DECODE_EXCEPTION_AND_UPDATE_STATUS;
 
@@ -1850,38 +1916,43 @@ begin
           EX_is_delayslot, count_eq_compare,count_enable, CAUSE)
     variable newCAUSE : reg32;
   begin
-      newCAUSE(CAUSE_BD)     := EX_is_delayslot; -- instr is in delay slot
-      newCAUSE(CAUSE_TI)     := count_eq_compare;
-      newCAUSE(CAUSE_CE1)    := '0';
-      newCAUSE(CAUSE_CE0)    := '0';
-      newCAUSE(CAUSE_DC)     := CAUSE(CAUSE_DC);
-      newCAUSE(CAUSE_PCI)    := '0';
-      newCAUSE(25 downto 24) := b"00";
-      newCAUSE(CAUSE_IV)     := CAUSE(CAUSE_IV);
-      newCAUSE(CAUSE_WP)     := '0';
-      newCAUSE(21 downto 16) := b"000000";      
-      newCAUSE(CAUSE_IP7)    := EX_int_req(7);
-      newCAUSE(CAUSE_IP6)    := EX_int_req(6);
-      newCAUSE(CAUSE_IP5)    := EX_int_req(5);
-      newCAUSE(CAUSE_IP4)    := EX_int_req(4);
-      newCAUSE(CAUSE_IP3)    := EX_int_req(3);
-      newCAUSE(CAUSE_IP2)    := EX_int_req(2);
-      newCAUSE(CAUSE_IP1)    := CAUSE(CAUSE_IP1);
-      newCAUSE(CAUSE_IP0)    := CAUSE(CAUSE_IP0);
-      newCAUSE(7)            := '0';
-      newCAUSE(6 downto 2)   := ExcCode;
-      newCAUSE(1 downto 0)   := b"00";
 
-      if (update = '1' and update_reg = cop0reg_CAUSE) then
-        CAUSEinp <= newCAUSE(CAUSE_BD downto CAUSE_CE0) &
-                    cop0_inp(CAUSE_DC) & cop0_inp(CAUSE_PCI) & b"00" &
-                    cop0_inp(CAUSE_IV) & 
-                    newCAUSE(CAUSE_WP  downto CAUSE_IP2) &
-                    cop0_inp(CAUSE_IP1 downto CAUSE_IP0) & '0' &
-                    newCAUSE(6 downto 2) & b"00";
-      else
-        CAUSEinp <= newCAUSE;
-      end if;
+    if STATUS(STATUS_EXL) = '0' then
+      newCAUSE(CAUSE_BD)   := EX_is_delayslot;  -- instr is in delay slot
+    else
+      newCAUSE(CAUSE_BD)   := CAUSE(CAUSE_BD);
+    end if;
+    newCAUSE(CAUSE_TI)     := count_eq_compare;
+    newCAUSE(CAUSE_CE1)    := '0';
+    newCAUSE(CAUSE_CE0)    := '0';
+    newCAUSE(CAUSE_DC)     := CAUSE(CAUSE_DC);
+    newCAUSE(CAUSE_PCI)    := '0';
+    newCAUSE(25 downto 24) := b"00";
+    newCAUSE(CAUSE_IV)     := CAUSE(CAUSE_IV);
+    newCAUSE(CAUSE_WP)     := '0';
+    newCAUSE(21 downto 16) := b"000000";      
+    newCAUSE(CAUSE_IP7)    := EX_int_req(7);
+    newCAUSE(CAUSE_IP6)    := EX_int_req(6);
+    newCAUSE(CAUSE_IP5)    := EX_int_req(5);
+    newCAUSE(CAUSE_IP4)    := EX_int_req(4);
+    newCAUSE(CAUSE_IP3)    := EX_int_req(3);
+    newCAUSE(CAUSE_IP2)    := EX_int_req(2);
+    newCAUSE(CAUSE_IP1)    := CAUSE(CAUSE_IP1);
+    newCAUSE(CAUSE_IP0)    := CAUSE(CAUSE_IP0);
+    newCAUSE(7)            := '0';
+    newCAUSE(6 downto 2)   := ExcCode;
+    newCAUSE(1 downto 0)   := b"00";
+
+    if (update = '1' and update_reg = cop0reg_CAUSE) then
+      CAUSEinp <= newCAUSE(CAUSE_BD downto CAUSE_CE0) &
+                  cop0_inp(CAUSE_DC) & cop0_inp(CAUSE_PCI) & b"00" &
+                  cop0_inp(CAUSE_IV) & 
+                  newCAUSE(CAUSE_WP  downto CAUSE_IP2) &
+                  cop0_inp(CAUSE_IP1 downto CAUSE_IP0) & '0' &
+                  newCAUSE(6 downto 2) & b"00";
+    else
+      CAUSEinp <= newCAUSE;
+    end if;
   end process COP0_COMPUTE_CAUSE;
 
   COP0_CAUSE_HOLD: process(rst,clk,
@@ -1925,8 +1996,8 @@ begin
                     else '1';
   
   COP0_COUNT: counter32 generic map (x"00000001")
-    -- port map (clk, rst, count_update, count_enable, cop0_inp, COUNT);
-    port map (clk, rst, count_update, PCload, cop0_inp, COUNT); -- DEBUG
+    port map (clk, rst, count_update, count_enable, cop0_inp, COUNT);
+    -- port map (clk, rst, count_update, PCload, cop0_inp, COUNT); -- DEBUG
 
   compare_set <= (count_eq_compare or BOOL2SL(COUNT = COMPARE))
                  when compare_update = '1'
@@ -1949,7 +2020,7 @@ begin
   COP0_BadVAddr: register32 generic map(x"00000000")
     port map (clk, rst, BadVAddr_update, BadVAddr_inp, BadVAddr);
 
-  
+
   -- LLaddr & LLbit ------------------------------
   LL_update <= '0' when (update = '1' and update_reg = cop0reg_LLAddr)
                else '1';
@@ -1963,23 +2034,324 @@ begin
                  '0';
   
   COP0_LLbit: process(rst,phi2)
-    begin
-      if rst = '0' then
-        EX_LLbit    <= '0';             -- break SC -> LL
-      elsif rising_edge(phi2) then
-        case is_exception is
-          when exERET =>
-            EX_LLbit <= '0';            -- break SC -> LL
-          when exLL =>
-            EX_LLbit <= not LL_update;  -- update only if instr is a LL
-          when others =>
-            null; -- LL_SC_abort <= '0';
-        end case;
+  begin
+    if rst = '0' then
+      EX_LLbit    <= '0';             -- break SC -> LL
+    elsif rising_edge(phi2) then
+      case is_exception is
+        when exERET =>
+          EX_LLbit <= '0';            -- break SC -> LL
+        when exLL =>
+          EX_LLbit <= not LL_update;  -- update only if instr is a LL
+        when others =>
+          null;
+      end case;
+    end if;
+  end process COP0_LLbit;
+  
+  EX_excp_type <= exNOP;
+
+  
+  -- MMU-TLB ===========================================================
+
+  -- MMU Index -----------------------------------
+
+  index_update <= '0' when (update = '1' and update_reg = cop0reg_Index)
+                  else not(tlb_probe);
+  
+  index_inp <= not(hit_mm) & MMU_IDX_0s & tlb_adr_mm when tlb_probe = '1' else 
+               '0' & MMU_IDX_0s & cop0_inp(MMU_CAPACITY_BITS-1 downto 0);
+
+  MMU_Index: register32 generic map(x"00000000")
+    port map (clk, rst, index_update, index_inp, INDEX);
+
+
+  -- MMU Wired -----------------------------------
+
+  wired_update <= '0' when (update = '1' and update_reg = cop0reg_Wired)
+                  else '1';
+  
+  wired_inp <= '0' & MMU_IDX_0s & cop0_inp(MMU_CAPACITY_BITS-1 downto 0);
+
+  MMU_Wired: register32 generic map(MMU_WIRED_INIT)
+    port map (clk, rst, wired_update, wired_inp, WIRED);
+
+  -- MMU Random ----------------------------------
+
+  MMU_Random: process(clk, rst, WIRED, wired_update)
+    variable count : integer range -1 to MMU_CAPACITY-1;
+  begin
+    if rst = '0' or wired_update = '0' then
+      count := MMU_CAPACITY - 1 ;
+    elsif rising_edge(clk) then
+      count := count - 1;
+      if count = to_integer(unsigned(WIRED))-1 then
+        count := MMU_CAPACITY - 1;
       end if;
-    end process COP0_LLbit;
-    
-    EX_excp_type <= exNOP;
-    
+    end if;
+    RANDOM <= std_logic_vector(to_signed(count, 32));
+  end process MMU_Random;
+
+  -- MMU EntryLo0 -- pg 63 ----------------------
+
+  entryLo0_update <= '0' when (update = '1' and update_reg = cop0reg_EntryLo0)
+                  else not(tlb_read);
+  
+  entryLo0_inp <= cop0_inp when tlb_read = '0' else tlb_entryLo0;
+  
+  MMU_EntryLo0: register32 generic map(x"00000000")
+    port map (clk, rst, entryLo0_update, entryLo0_inp, EntryLo0);
+
+  -- MMU EntryLo1 -- pg 63 ----------------------  
+  
+  entryLo1_update <= '0' when (update = '1' and update_reg = cop0reg_EntryLo1)
+                  else not(tlb_read);
+  
+  entryLo1_inp <= cop0_inp when tlb_read = '0' else tlb_entryLo1;
+  
+  MMU_EntryLo1: register32 generic map(x"00000000")
+    port map (clk, rst, entryLo1_update, entryLo1_inp, EntryLo1);
+
+  -- MMU Context -- pg 67 ----------------------  
+  
+  context_update <= '0' when (update = '1' and update_reg = cop0reg_Context)
+                  else '1';
+  
+  context_inp <= cop0_inp when tlb_read = '0' else tlb_context_mm;
+  
+  MMU_Context: register32 generic map(x"00000000")
+    port map (clk, rst, context_update, context_inp, Context);
+
+  -- MMU Pagemask -----------------------------  
+  -- page size is fixed = 4k, thus PageMask is not register
+  
+  -- pageMask_update <= '0' when (update='1' and update_reg=cop0reg_PageMask)
+  --                else '1';
+  
+  -- pageMask_inp <= cop0_inp when tlb_read = '0' else tlb_pageMask_mm;
+  
+  -- MMU_PageMask: register32 generic map(x"00000000")
+  --  port map (clk, rst, pageMask_update, pageMask_inp, PageMask);
+
+  PageMask <= x"00001800";              -- pg 68
+
+  -- MMU EntryHi -- pg 76 ----------------------  
+  -- EntryHi holds the ASID of the current process, to check for a match
+  
+  entryHi_update <= '0' when (update = '1' and update_reg = cop0reg_EntryHi)
+                  else not(tlb_read);
+  
+  entryHi_inp <= cop0_inp when tlb_read = '0' else tlb_entryhi;
+  
+  MMU_EntryHi: register32 generic map(x"00000000")
+    port map (clk, rst, entryHi_update, entryHi_inp, EntryHi);
+
+  
+  -- MMU TLB DATA array ------------------------
+
+  -- TLB_tag: 31..10 = VPN, 9 = 0, 8 = G, 7..0 = ASID
+  -- TLB_dat: 27..6 = PPN, 5..3 = C, 2 = D, 1 = V, 0 = G
+  
+  MMU_CONTROL: process(rst, clk, EX_exception, hit_mm, tlb_adr_mm,
+                          INDEX, RANDOM, EntryHi, EntryLo0, -- EntryLo1,
+                          tlb_tag0, tlb_tag1, tlb_tag2, tlb_tag3)
+    variable e_hi : reg32;
+    variable e_lo : reg28;
+  begin
+
+    tlb_tag0_updt <= '1';
+    tlb_tag1_updt <= '1';
+    tlb_tag2_updt <= '1';
+    tlb_tag3_updt <= '1';
+    tlb_dat0_updt <= '1';
+    tlb_dat1_updt <= '1';
+    tlb_dat2_updt <= '1';
+    tlb_dat3_updt <= '1';
+    tlb_read      <= '0';
+    tlb_probe     <= '0';
+
+    case EX_exception is
+      when exTLBP =>
+        
+        tlb_probe <= '1';
+
+      when exTLBR => 
+
+        tlb_read <= '1';
+        tlb_adr  <= to_integer(unsigned(INDEX));
+ 
+        case tlb_adr is
+          when 0 => e_hi := tlb_tag0; e_lo := tlb_dat0;
+          when 1 => e_hi := tlb_tag1; e_lo := tlb_dat1;
+          when 2 => e_hi := tlb_tag2; e_lo := tlb_dat2;
+          when 3 => e_hi := tlb_tag3; e_lo := tlb_dat3;
+          when others => null;
+        end case;
+
+        -- assert false
+        -- report "e_hi="&SLV32HEX(e_hi)&" adr="&natural'image(tlb_adr);--DEBUG
+
+        tlb_entryLo0(31 downto ELO_AHI_BIT+1) <= (others => '0');
+        tlb_entryLo0(ELO_AHI_BIT downto ELO_ALO_BIT)
+          <= e_lo(DAT_AHI_BIT downto DAT_ALO_BIT);
+        tlb_entryLo0(ELO_CHI_BIT  downto ELO_CLO_BIT)
+          <= e_lo(DAT_CHI_BIT  downto DAT_CLO_BIT);
+        tlb_entryLo0(ELO_D_BIT) <= e_lo(DAT_D_BIT);
+        tlb_entryLo0(ELO_V_BIT) <= e_lo(DAT_V_BIT);
+        tlb_entryLo0(ELO_G_BIT) <= e_lo(DAT_G_BIT);
+
+        tlb_entryhi(EHI_AHI_BIT downto EHI_ALO_BIT)
+          <= e_hi(TAG_AHI_BIT downto TAG_ALO_BIT);
+        tlb_entryhi(EHI_ALO_BIT-1 downto EHI_ASIDHI_BIT+1) <= (others => '0');
+        tlb_entryhi(EHI_ASIDHI_BIT downto EHI_ASIDLO_BIT)
+          <= e_hi(TAG_ASIDHI_BIT downto TAG_ASIDLO_BIT);
+
+      when exTLBWI | exTLBWR => 
+
+        e_hi := EntryHi;
+        e_hi(TAG_G_BIT) := EntryLo0(ELO_G_BIT);
+        e_hi(TAG_Z_BIT) := '0';
+        tlb_tag_inp <= e_hi;
+
+        e_lo := EntryLo0(ELO_AHI_BIT downto ELO_G_BIT);
+        tlb_dat_inp <= e_lo;
+
+        
+        case EX_exception is
+          when exTLBWI => tlb_adr <= to_integer(unsigned(INDEX));
+          when exTLBWR => tlb_adr <= to_integer(unsigned(RANDOM));
+          when others => null;
+        end case;
+
+        case tlb_adr is
+          when 0 => tlb_tag0_updt <= '0'; tlb_dat0_updt <= '0';
+          when 1 => tlb_tag1_updt <= '0'; tlb_dat1_updt <= '0';
+          when 2 => tlb_tag2_updt <= '0'; tlb_dat2_updt <= '0';
+          when 3 => tlb_tag3_updt <= '0'; tlb_dat3_updt <= '0';
+          when others => null;
+        end case;
+          
+      when others => null;
+
+    end case;    
+
+  end process MMU_CONTROL;
+
+  
+  -- MMU TLB TAG array -------------------------
+
+  mm <= entryHi(VABITS-1 downto PAGE_SZ_BITS) when tlb_probe = '1' else
+        MM_result(VABITS-1 downto PAGE_SZ_BITS);
+
+  MMU_TAG0: register32 generic map(x"00000000")
+    port map (clk, rst, tlb_tag0_updt, tlb_tag_inp, tlb_tag0);
+
+  hit0_pc <= BOOL2SL(
+    tlb_tag0(VA_HI_BIT downto VA_LO_BIT) = PC(VA_HI_BIT downto VA_LO_BIT) AND
+    tlb_tag0(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0));
+
+  hit0_mm <= BOOL2SL(
+    tlb_tag0(VA_HI_BIT downto VA_LO_BIT) = mm(VA_HI_BIT downto VA_LO_BIT) AND
+    tlb_tag0(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0));
+
+  MMU_DAT0: register28 generic map(x"0000012")  -- PPN=0, v=1
+    port map (clk, rst, tlb_dat0_updt, tlb_dat_inp, tlb_dat0);
+  
+  
+  
+  MMU_TAG1: register32 generic map(x"00000400")
+    port map (clk, rst, tlb_tag1_updt, tlb_tag_inp, tlb_tag1);
+
+  hit1_pc <= BOOL2SL(
+    tlb_tag1(VA_HI_BIT downto VA_LO_BIT) = PC(VA_HI_BIT downto VA_LO_BIT) AND
+    tlb_tag1(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0));
+
+  hit1_mm <= BOOL2SL(
+    tlb_tag1(VA_HI_BIT downto VA_LO_BIT) = mm(VA_HI_BIT downto VA_LO_BIT) AND
+    tlb_tag1(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0));
+
+  MMU_DAT1: register28 generic map(x"0000052")  -- PPN=1, v=1
+    port map (clk, rst, tlb_dat1_updt, tlb_dat_inp, tlb_dat1);
+
+  
+  MMU_TAG2: register32 generic map(x"00000800")
+    port map (clk, rst, tlb_tag2_updt, tlb_tag_inp, tlb_tag2);
+
+  hit2_pc <= BOOL2SL(
+    tlb_tag2(VA_HI_BIT downto VA_LO_BIT) = PC(VA_HI_BIT downto VA_LO_BIT) AND
+    tlb_tag2(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0));
+
+  hit2_mm <= BOOL2SL(
+    tlb_tag2(VA_HI_BIT downto VA_LO_BIT) = mm(VA_HI_BIT downto VA_LO_BIT) AND
+    tlb_tag2(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0));
+  
+  MMU_DAT2: register28 generic map(x"0000092")  -- PPN=2, v=1
+    port map (clk, rst, tlb_dat2_updt, tlb_dat_inp, tlb_dat2);
+
+  
+  MMU_TAG3: register32 generic map(x"00000c00")
+    port map (clk, rst, tlb_tag3_updt, tlb_tag_inp, tlb_tag3);
+
+  hit3_pc <= BOOL2SL(
+    tlb_tag3(VA_HI_BIT downto VA_LO_BIT) = PC(VA_HI_BIT downto VA_LO_BIT) AND
+    tlb_tag3(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0));
+
+  hit3_mm <= BOOL2SL(
+    tlb_tag3(VA_HI_BIT downto VA_LO_BIT) = mm(VA_HI_BIT downto VA_LO_BIT) AND
+    tlb_tag3(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0));
+
+  MMU_DAT3: register28 generic map(x"00000d2")  -- PPN=3, v=1
+    port map (clk, rst, tlb_dat3_updt, tlb_dat_inp, tlb_dat3);
+
+  
+
+  tlb_a2_pc <= '0';
+  tlb_a1_pc <= hit2_pc or hit3_pc;
+  tlb_a0_pc <= hit1_pc or hit3_pc;
+
+  hit_pc     <= hit0_pc or hit1_pc or hit2_pc or hit3_pc;
+  tlb_adr_pc <= tlb_a1_pc & tlb_a0_pc;  -- tlb_a2_pc & 
+
+  tlb_ppn <= tlb_dat0(DAT_AHI_BIT downto DAT_ALO_BIT) when hit0_pc = '1'
+             else (others => 'Z');
+  tlb_ppn <= tlb_dat1(DAT_AHI_BIT downto DAT_ALO_BIT) when hit1_pc = '1'
+             else (others => 'Z');
+  tlb_ppn <= tlb_dat2(DAT_AHI_BIT downto DAT_ALO_BIT) when hit2_pc = '1'
+             else (others => 'Z');
+  tlb_ppn <= tlb_dat3(DAT_AHI_BIT downto DAT_ALO_BIT) when hit2_pc = '1'
+             else (others => 'Z');
+
+  
+--  with "00" select --  tlb_adr_pc select
+--    tlb_ppn <= tlb_dat0(DAT_AHI_BIT downto DAT_ALO_BIT) when "00",
+--                tlb_dat1(DAT_AHI_BIT downto DAT_ALO_BIT) when "01",
+--                tlb_dat2(DAT_AHI_BIT downto DAT_ALO_BIT) when "10",
+--                tlb_dat3(DAT_AHI_BIT downto DAT_ALO_BIT) when "11",
+--                (others => 'X') when others;
+
+  phy_i_addr <= tlb_ppn(21 downto 0) & PC(VA_LO_BIT-1 downto 0);
+  
+  assert false report LF& " dathi "&integer'image(DAT_AHI_BIT) &
+                          " datlo "&integer'image(DAT_ALO_BIT) &
+                          " valo " &integer'image(VA_LO_BIT) &
+                          " ppn_b "&integer'image(PPN_BITS) &
+                          " dathl "&integer'image(DAT_AHI_BIT - DAT_ALO_BIT) &
+    " ppn_bits " &integer'image(PPN_BITS)&
+    " 2bits " &integer'image(to_integer(signed(tlb_ppn(1 downto 0))))&
+    LF & " elohi "&integer'image(ELO_AHI_BIT)&
+    " elolo "&integer'image(ELO_ALO_BIT);
+  
+  
+  tlb_a2_mm <= '0';  
+  tlb_a1_mm <= hit2_mm or hit3_mm;
+  tlb_a0_mm <= hit1_mm or hit3_mm;
+
+  hit_mm     <= hit0_mm or hit1_mm or hit2_mm or hit3_mm;
+  tlb_adr_mm <= tlb_a1_mm & tlb_a0_mm;  -- tlb_a2_mm & 
+  
+  -- MMU-TLB == end =======================================================
+
+      
   -- ----------------------------------------------------------------------
   PIPESTAGE_EXCP_EX_MM: reg_excp_EX_MM
     port map (clk, rst, excp_EX_MM_ld, EX_can_trap,MM_can_trap,   

@@ -29,21 +29,33 @@ package p_EXCEPTION is
                           exBREAK, exTRAP, exSYSCALL,  -- 8
                           exRESV_INSTR, exWAIT,  -- 10
                           IFaddressError, MMaddressErrorLD, MMaddressErrorST,
-                          exTLBld, exTLBst, exTLBmod,  --16
-                          exOvfl,       -- 17
-                          exLL,exSC,    -- 18,19  these are treated by COP0
+                          exTLBrefill, exTLBld, exTLBst, exTLBmod,  -- 17
+                          exOvfl,       -- 18
+                          exLL,exSC,    -- 19,20  these are handled by COP0
+                          exEHB,        -- 21
+                          exTLBP, exTLBR, exTLBWI, exTLBWR,  -- 25
+                          exDERET,  -- 26
                           invalid_exception);
 
   attribute enum_encoding of exception_type : type is
-    "000000 000001 000010 000011 000100 000101 000110 000111 001000 001001 001010 001011 001100 001101 001110 001111 010000 010001 010010 010011 010100";
+    "000000 000001 000010 000011 000100 000101 000110 000111 001000 001001 001010 001011 001100 001101 001110 001111 010000 010001 010010 010011 010100 010101 010110 010111 011000 011001 011010 011011";
 
---  010101 010110 010111 011000 011001 011010 011011 011100 011101 011110 011111 100000 100001 100010";
+-- 011100 011101 011110 011111 100000 100001 100010";
 
 
   
   -- Table 8-1 Coprocessor 0 Registers, pg 55
+  constant cop0reg_Index    : reg5 := b"00000";  -- 0
+  constant cop0reg_Random   : reg5 := b"00001";  -- 1
+  constant cop0reg_EntryLo0 : reg5 := b"00010";  -- 2
+  constant cop0reg_EntryLo1 : reg5 := b"00011";  -- 3
+  constant cop0reg_Context  : reg5 := b"00100";  -- 4
+  constant cop0reg_PageMask : reg5 := b"00101";  -- 5
+  constant cop0reg_Wired    : reg5 := b"00110";  -- 6
+  constant cop0reg_HWREna   : reg5 := b"00111";  -- 7
   constant cop0reg_BadVAddr : reg5 := b"01000";  -- 8
   constant cop0reg_COUNT    : reg5 := b"01001";  -- 9
+  constant cop0reg_EntryHi  : reg5 := b"01010";  -- 10
   constant cop0reg_COMPARE  : reg5 := b"01011";  -- 11
   constant cop0reg_STATUS   : reg5 := b"01100";  -- 12
   constant cop0reg_CAUSE    : reg5 := b"01101";  -- 13
@@ -70,10 +82,10 @@ package p_EXCEPTION is
   constant cop0code_NULL : reg5 := b"11111";  -- 1f, (no exception)=x3c
 
 
-  -- kernel mode, all else disabled
+  -- at exception level, kernel mode, cop0, all else disabled
   constant RESET_STATUS: std_logic_vector(31 downto 0) := x"10000002";
 
-  -- COUNTER disabled, kernel mode, exceptionCode = noException
+  -- COUNTER disabled, special interr vector, exceptionCode = noException
   constant RESET_CAUSE:  std_logic_vector(31 downto 0) := x"0880007c";
 
 

@@ -23,19 +23,23 @@ use work.p_wires.all;
 package p_MEMORY is
 
   -- To simplify (and accelerate) the RAM address decoding,
-  --  the BASE of the RAM addresses MUST be allocated at an
-  --  address that is above/larger the RAM capacity.  Otherwise, the
-  --  base must be subtracted from the address on every reference,
-  --  which means having an adder in the critical path.  Bad idea.
+  --   the BASE of the RAM addresses MUST be allocated at an
+  --   address that is above/larger the the RAM capacity.  Otherwise,
+  --   the base must be subtracted from the address on every reference,
+  --   which means having an adder in the critical path.  Not good.
 
   -- The address ranges for ROM, RAM and I/O must be distinct in the
-  -- uppermost 12 bits of the address (bits 31..20).
+  --   uppermost 12 bits of the address (bits 31..20).
   constant HI_SEL_BITS : integer := 31;
   constant LO_SEL_BITS : integer := 20;
+
   
-  -- x_IO_ADDR_RANGE can have only ONE bit set, thus being a power of 2
+  -- x_IO_ADDR_RANGE can have only ONE bit set, thus being a power of 2.
+  -- ACHTUNG: changing the above number may break some of the test programs.  
+
   
   -- begin DO NOT change these names as several scripts depend on them --
+  --  you may change the values, not names nor formatting              --
   constant x_INST_BASE_ADDR : reg32   := x"00000000";
   constant x_INST_MEM_SZ    : reg32   := x"00002000";  
   constant x_DATA_BASE_ADDR : reg32   := x"00400000";  
@@ -61,7 +65,7 @@ package p_MEMORY is
   constant IO_ADDR_MASK    : integer := (0 - IO_ADDR_RANGE);
   constant x_IO_ADDR_MASK  : reg32   := std_logic_vector(to_signed(0 - IO_ADDR_RANGE, 32));
 
-  -- maximum number of IO devices, must be power of two.
+  -- maximum number of IO devices, must be a power of two.
   constant IO_MAX_NUM_DEVS : integer := 16;
   
   -- I/O addresses are IO_ADDR_RANGE apart 
@@ -80,6 +84,7 @@ package p_MEMORY is
   constant IO_HIGHEST_ADDR : integer :=
     IO_BASE_ADDR + (IO_MAX_NUM_DEVS - 1)*IO_ADDR_RANGE;
 
+
   -- DATA CACHE parameters ----------------------------------------------
   
   -- The combination of capacity, associativity and block/line size
@@ -96,7 +101,7 @@ package p_MEMORY is
   constant DC_WORD_SEL_BITS   : natural := log2_ceil( DC_WORDS_PER_BLOCK );
   constant DC_BYTE_SEL_BITS   : natural := log2_ceil( DC_BYTES_PER_WORD );
 
-  -- constants for CONFIG1 cop0 register
+  -- constants for CONFIG1 cop0 register (Table 8-24 pg 103)
   constant DC_SETS_PER_WAY: reg3 :=
     std_logic_vector(to_signed(DC_INDEX_BITS - 6, 3));
   constant DC_LINE_SIZE: reg3 :=
@@ -104,6 +109,7 @@ package p_MEMORY is
   constant DC_ASSOCIATIVITY: reg3 :=
     std_logic_vector(to_signed(DC_NUM_WAYS - 1, 3));
 
+  
   -- INSTRUCTION CACHE parameters ---------------------------------------
 
   -- The combination of capacity, associativity and block/line size
@@ -120,7 +126,7 @@ package p_MEMORY is
   constant IC_WORD_SEL_BITS   : natural := log2_ceil( IC_WORDS_PER_BLOCK );
   constant IC_BYTE_SEL_BITS   : natural := log2_ceil( IC_BYTES_PER_WORD );
 
-  -- constants for CONFIG1 cop0 register
+  -- constants for CONFIG1 cop0 register (Table 8-24 pg 103)
   constant IC_SETS_PER_WAY: reg3 :=
     std_logic_vector(to_signed(IC_INDEX_BITS - 6, 3));
   constant IC_LINE_SIZE: reg3 :=
@@ -128,13 +134,73 @@ package p_MEMORY is
   constant IC_ASSOCIATIVITY: reg3 :=
     std_logic_vector(to_signed(IC_NUM_WAYS - 1, 3));
 
-  -- constants to access statistics counter
+  -- constants to access the cache statistics counters
   constant dcache_Stats_ref   : reg3 := "000";
   constant dcache_Stats_rdhit : reg3 := "001";
   constant dcache_Stats_wrhit : reg3 := "010";
   constant dcache_Stats_flush : reg3 := "011";
   constant icache_Stats_ref   : reg3 := "100";
   constant icache_Stats_hit   : reg3 := "101";
+
+  
+  -- MMU parameters -----------------------------------------------------
+
+  -- constants for CONFIG1 cop0 register (Table 8-24 pg 103)
+  constant MMU_CAPACITY : natural := 4;
+  constant MMU_CAPACITY_BITS : natural := log2_ceil( MMU_CAPACITY );
+  constant MMU_SIZE: reg6 := 
+    std_logic_vector(to_signed( (MMU_CAPACITY-1), 6) );
+  constant MMU_WIRED_INIT : reg32 := x"00000000";
+  
+  constant VABITS       : natural := 32;
+  constant PABITS       : natural := 32;
+  constant PAGE_SZ      : natural := 1024;   -- 1k pages
+  constant PAGE_SZ_BITS : natural := log2_ceil( PAGE_SZ );
+
+  constant PPN_BITS     : natural := PABITS - PAGE_SZ_BITS;
+  constant VA_HI_BIT    : natural := 31; -- VAaddr in EntryHi 31..PG_size
+  constant VA_LO_BIT    : natural := PAGE_SZ_BITS;
+
+  constant ASID_HI_BIT  : natural := 7;  -- ASID   in EntryHi 7..0
+  constant ASID_LO_BIT  : natural := 0;
+
+  constant EHI_ASIDLO_BIT : natural := 0;
+  constant EHI_ASIDHI_BIT : natural := 7;  
+  constant EHI_ALO_BIT  : natural := PAGE_SZ_BITS;
+  constant EHI_AHI_BIT  : natural := EHI_ALO_BIT + PPN_BITS - 1;
+
+  constant ELO_G_BIT    : natural := 0;
+  constant ELO_V_BIT    : natural := 1;
+  constant ELO_D_BIT    : natural := 2;
+  constant ELO_CLO_BIT  : natural := 3;
+  constant ELO_CHI_BIT  : natural := 5;  
+  constant ELO_ALO_BIT  : natural := 6;
+  constant ELO_AHI_BIT  : natural := ELO_ALO_BIT + PPN_BITS - 1;
+
+  constant TAG_ASIDLO_BIT : natural := 0;
+  constant TAG_ASIDHI_BIT : natural := 7;
+  constant TAG_G_BIT    : natural := 8;
+  constant TAG_Z_BIT    : natural := 9;
+  constant TAG_AHI_BIT  : natural := 31;  
+  constant TAG_ALO_BIT  : natural := TAG_AHI_BIT - PPN_BITS + 1;
+
+  constant DAT_G_BIT    : natural := 0;
+  constant DAT_V_BIT    : natural := 1;
+  constant DAT_D_BIT    : natural := 2;
+  constant DAT_CLO_BIT  : natural := 3;
+  constant DAT_CHI_BIT  : natural := 5;  
+  constant DAT_ALO_BIT  : natural := 6;
+  constant DAT_AHI_BIT  : natural := DAT_ALO_BIT + PPN_BITS - 1;
+
+ 
+  subtype  MMU_idx_bits is std_logic_vector(MMU_CAPACITY_BITS-1 downto 0);
+  constant MMU_idx_0s : std_logic_vector(30 downto MMU_CAPACITY_BITS) :=
+    (others => '0');
+  constant MMU_IDX_BIT : natural := 31;  -- probe hit=1, miss=0
+  
+  constant mmu_PageMask : reg32 := x"00000000";  -- pg 68, 1k pages only
+  -- constant mmu_PageMask : reg32 := x"00001800";  -- pg 68, 4k pages only
+
   
 end p_MEMORY;
 
