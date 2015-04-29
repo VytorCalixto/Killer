@@ -18,7 +18,7 @@
 
 	# see vhdl/packageExcp.vhd for addresses
 	.set x_EXCEPTION_0000,0x00000080
-	.set x_EXCEPTION_0180,0x000000c0
+	.set x_EXCEPTION_0180,0x000000C0
 	.set x_EXCEPTION_0200,0x00000140
 	.set x_ENTRY_POINT,0x00000300
 
