@@ -55,6 +55,8 @@ end architecture functional;
 
 
 -- -----------------------------------------------------------------------
+-- add/subtract SIGNED numbers
+-- -----------------------------------------------------------------------
 library IEEE;
 use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
@@ -84,6 +86,34 @@ begin
 
   overflow <= ovfl_add when add_sub='1' else
               ovfl_sub;
+  
+end architecture functional;
+-- -----------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------
+-- add/subtract UN-SIGNED numbers, does not signal overflow
+-- -----------------------------------------------------------------------
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
+entity mf_alt_add_sub_u is
+  port(add_sub         : IN STD_LOGIC;  -- add=1, sub=0
+       dataa           : IN STD_LOGIC_VECTOR (31 DOWNTO 0);
+       datab           : IN STD_LOGIC_VECTOR (31 DOWNTO 0);
+       result          : OUT STD_LOGIC_VECTOR (31 DOWNTO 0));
+end mf_alt_add_sub_u;
+  
+architecture functional of mf_alt_add_sub_u is
+  signal add_C, sub_C : STD_LOGIC_VECTOR (31 DOWNTO 0);
+begin
+
+  add_C <= std_logic_vector(unsigned(dataa) + unsigned(datab));
+    
+  sub_C <= std_logic_vector(unsigned(dataa)+unsigned(unsigned(not datab)+1));
+
+  result <= add_C(31 downto 0) when add_sub='1' else
+            sub_C(31 downto 0);
   
 end architecture functional;
 -- -----------------------------------------------------------------------

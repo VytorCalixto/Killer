@@ -1,3 +1,6 @@
+        ##
+        ## this test is run in User Mode
+        ##
 	# mips-as -O0 -EL -mips32r2
 	.include "cMIPS.s"
 	.text
@@ -7,15 +10,20 @@
 	.global _exit
 	.global exit
 	.ent    _start
+
+        ##
+        ## reset leaves processor in kernel mode, all else disabled
+        ##
 _start: nop
-        li   $k0, cop0_STATUS_reset # RESET, kernel mode, all else disabled
-        mtc0 $k0, cop0_STATUS
-        li   $k0, cop0_CAUSE_reset  # RESET, COUNTER stopped, no interrupts
-        mtc0 $k0, cop0_CAUSE
-	li   $sp,(x_DATA_BASE_ADDR+x_DATA_MEM_SZ-8) # initialize SP: ramTop-8
-	nop
-	jal main
-	nop
+        li   $sp,(x_DATA_BASE_ADDR+x_DATA_MEM_SZ-8) # initialize SP: ramTop-8
+        la   $k0, main
+        mtc0 $k0, cop0_EPC
+        nop
+        nop
+        nop
+        eret # go into user mode, all else disabled
+        nop
+
 exit:	
 _exit:	nop	# flush pipeline
 	nop
@@ -32,10 +40,10 @@ _exit:	nop	# flush pipeline
 excp_180:	
 _excp_180:
         mfc0  $k0, cop0_CAUSE
-        sw    $k0,0($15)       # print CAUSE
         addiu $7,$7,-1         # decrement iteration control
-	li    $k0, 0x18000000  # disable interrupts
-        mtc0  $k0, cop0_STATUS
+        sw    $k0,0($15)       # print CAUSE
+	#li    $k0, 0x18000000  # disable interrupts
+        #mtc0  $k0, cop0_STATUS
 	eret
 	.end _excp_180
 
@@ -44,6 +52,9 @@ _excp_180:
         .ent _excp_200
 excp_200:
 _excp_200:
+        ##
+        ## this exception should not happen
+        ##
         li   $28,'\n'
         sw   $28, x_IO_ADDR_RANGE($15)  # signal exception to std_out
         sw   $28, x_IO_ADDR_RANGE($15)  #  print two \n

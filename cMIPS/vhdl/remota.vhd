@@ -294,14 +294,16 @@ begin
   -- baud rate generators ---------------------------------------------
 
   with bit_rt select
-    tx_baud_div <=     4/2 when b"000",
-                     434/2  when b"001",
-                     868/2 when b"010",
-                    1302/2 when b"011",
-                    1736/2 when b"100",
-                    2604/2 when b"101",
-                    3472/2 when b"110",
-                    5208/2 when others;
+    tx_baud_div <=      8/2 when b"000",
+                       16/2 when b"001",
+                       32/2 when b"010",
+                      434/2 when b"011",
+                      868/2 when b"100",
+                     1302/2 when b"101",
+                     1736/2 when b"110",
+                     2604/2 when others;
+                     -- 3472/2 when b"110",
+                     -- 5208/2 when others;
 
   U_bit_rt_tx: process(clk, rst)
     variable baud_cnt : integer;
@@ -322,14 +324,16 @@ begin
 
   -- RX clock daud rate
   with bit_rt select
-    rx_baud_div <=     4/2 when b"000",
-                     434/2 when b"001",
-                     868/2 when b"010",
-                    1302/2 when b"011",
-                    1736/2 when b"100",
-                    2604/2 when b"101",
-                    3472/2 when b"110",
-                    5208/2 when others;
+    rx_baud_div <=      8/2 when b"000",
+                       16/2 when b"001",
+                       32/2 when b"010",
+                      434/2 when b"011",
+                      868/2 when b"100",
+                     1302/2 when b"101",
+                     1736/2 when b"110",
+                     2604/2 when others;
+                     -- 3472/2 when b"110",
+                     -- 5208/2 when others;
 
   U_bit_rt_rx: process(clk, rst, reset_rxck, rx_run)
     variable baud_cnt : integer;

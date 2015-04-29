@@ -63,7 +63,7 @@ done
 
 touch input.data serial.inp
 
-a_FWD="fwdAddAddAddSw fwd_SW lwFWDsw lwFWDsw2 slt32 reg0"
+a_FWD="fwdAddAddAddSw fwd_SW lwFWDsw lwFWDsw2 slt32 slt_u_32 slt_s_32 reg0"
 a_CAC="dCacheTst lhUshUCache lbUsbUCache lbsbCache dCacheTstH dCacheTstB"
 a_BEQ="lw-bne bXtz sltbeq beq_dlySlot jr_dlySlot"
 a_FUN="jaljr jr_2 jal_fun_jr jalr_jr bltzal_fun_jr"

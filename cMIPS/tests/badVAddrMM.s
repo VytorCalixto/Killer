@@ -8,24 +8,21 @@
 	.global exit
 	.ent    _start
 _start: nop
-        li   $k0, cop0_STATUS_reset # RESET, kernel mode, all else disabled
-        mtc0 $k0, cop0_STATUS
-
-	li   $k0, cop0_CAUSE_reset # RESET, no exceptions 
-        mtc0 $k0, cop0_CAUSE
-
 	li   $sp,(x_DATA_BASE_ADDR+x_DATA_MEM_SZ-8) # initialize SP: ramTop-8
-
-	nop
-	jal main
+        la   $k0, main
+        nop
+        mtc0 $k0, cop0_EPC
+        nop
+        eret    # go into user mode, all else disabled
+        nop
 	nop
 exit:	
-_exit:	nop	     # flush pipeline
+_exit:	nop	# flush pipeline
 	nop
 	nop
 	nop
 	nop
-	wait 0 # then stop VHDL simulation
+	wait    # then stop VHDL simulation
 	nop
 	nop
 	.end _start
@@ -46,44 +43,40 @@ _excp_180:
 	addiu $k1, $zero, -4	# -4 = 0xffff.fffc
 	and   $15,$15,$k1	# fix the invalid address
 
-	li    $k0, 0x18000300   # disable interrupts
-        mtc0  $k0, cop0_STATUS
-	#mfc0  $k0, cop0_EPC     # fix the return address, align to word
-	#and   $k0, $k0, $k1
 	eret
 	.end _excp_180
 
 
 	.org x_ENTRY_POINT,0    # normal code start
-main:	la $14,x_IO_BASE_ADDR
-	la $15,x_IO_BASE_ADDR
-	li $7,3                 # do 3 rounds
-	la $3,-1
+main:	la $14, x_IO_BASE_ADDR
+	la $15, x_IO_BASE_ADDR
+	li $7, 3                # do 3 rounds
+	la $3, -1
 	nop
 
-here:	addiu $3,$3,1
+here:	addiu $3, $3, 1
 	sw  $3, 0($15)          # exception handler decreases $7
-	beq $7,$zero, next      # there should be 3 exceptions: addr&{01,10,11}
+	beq $7, $zero, next     # there should be 3 exceptions: addr&{01,10,11}
 	nop			# of type AddrError store=x14
-	addu $15,$15,$3
+	addu $15, $15, $3
 	j here
 	nop
 	
 next:	li $29, '\n'           # to separate output
 	sw $29, x_IO_ADDR_RANGE($14)
-	la $15,x_DATA_BASE_ADDR
-	la $18,x_IO_BASE_ADDR
-	li $7,3
-	la $3,-1
-	sw  $7, 0($15)
+	la $15, x_DATA_BASE_ADDR
+	la $18, x_IO_BASE_ADDR
+	li $7, 3
+	la $3, -1
+	sw $7, 0($15)
 	nop
 
 there:	addiu $3,$3,1
 	lw  $3, 0($15)      	# there should be 3 exceptions: addr&{01,10,11}
 	sw  $7, 0($18)		# of type AddrError if/ld=x10
-	beq $7,$zero, after
+	beq $7, $zero, after
 	nop
-	addu $15,$15,$3
+	addu $15, $15, $3
 	j there
 	nop
 
@@ -92,15 +85,15 @@ after:	li $29, '\n'           	# to separate output
 	sw $29, x_IO_ADDR_RANGE($14)
 	la $14, x_IO_BASE_ADDR
 	la $15, x_IO_BASE_ADDR
-	li $7,3
-	la $3,-1
+	li $7, 3
+	la $3, -1
 	nop
 
-here2:	addiu $3,$3,1      	# there should be 3 exceptions: addr&{01,11}
+here2:	addiu $3, $3, 1      	# there should be 3 exceptions: addr&{01,11}
 	sh  $3, 0($15)		# of type AddrError store=x14
-	beq $7,$zero, next2
+	beq $7, $zero, next2
 	nop
-	addu $15,$15,$3
+	addu $15, $15, $3
 	j here2
 	nop
 
@@ -109,16 +102,16 @@ next2:	li $29, '\n'           # to separate output
 	sw $29, x_IO_ADDR_RANGE($14)
 	la $15, x_DATA_BASE_ADDR
 	la $18, x_IO_BASE_ADDR
-	li $7,3
-	la $3,-1
+	li $7, 3
+	la $3, -1
 	sw  $7, 0($15)
 	nop
 
 there2:	lh  $3, 0($15)      	# there should be 3 exceptions: addr&{01,11}
 	sw  $7, 0($18)		# of type AddrError if/ld=x10
-	beq $7,$zero, end
+	beq $7, $zero, end
 	nop
-	addu $15,$15,$3
+	addu $15, $15, $3
 	nop
 	j there2
 	nop

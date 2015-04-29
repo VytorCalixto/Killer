@@ -8,17 +8,13 @@
 	.global exit
 	.ent    _start
 _start: nop
-        li   $k0, cop0_CAUSE_reset  # RESET, kernel mode, all else disabled
-        mtc0 $k0, cop0_STATUS
-
-        li   $k0, cop0_CAUSE_reset  # RESET, COUNTER stopped, no interrupts
-        mtc0 $k0, cop0_CAUSE
-
 	li   $sp,(x_DATA_BASE_ADDR+x_DATA_MEM_SZ-8) # initialize SP: ramTop-8
-
-	nop
-	jal main
-	nop
+        la   $k0, main
+        nop
+        mtc0 $k0, cop0_EPC
+        nop
+        eret    # go into user mode, all else disabled
+        nop
 exit:	
 _exit:	nop	# flush pipeline
 	nop
@@ -37,19 +33,13 @@ _exit:	nop	# flush pipeline
 excp_180:	
 _excp_180:
         mfc0  $k0, cop0_CAUSE
-	sw    $k0,0($15)        # print CAUSE
-
-	addiu $7,$7,-1
-
-	li    $k0, 0x18000300   # disable interrupts
-        mtc0  $k0, cop0_STATUS
+	sw    $k0, 0($15)       # print CAUSE
 	mfc0  $k0, cop0_EPC     # fix return address
-	srl   $k0,$k0,2
-	sll   $k0,$k0,2
+	addiu $7, $7, -1
+	srl   $k0, $k0, 2
+	sll   $k0, $k0, 2
 	mtc0  $k0, cop0_EPC
-
-	li    $k0, cop0_CAUSE_reset # clear CAUSE
-	mtc0  $k0, cop0_CAUSE
+	nop
 	eret
 	.end _excp_180
 

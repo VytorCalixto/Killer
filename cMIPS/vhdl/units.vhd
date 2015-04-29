@@ -212,6 +212,13 @@ architecture functional of alu is
          result          : OUT STD_LOGIC_VECTOR (31 DOWNTO 0));
   end component mf_alt_add_sub;
   
+  component mf_alt_add_sub_u is
+    port(add_sub         : IN STD_LOGIC;  -- add=1, sub=0
+         dataa           : IN STD_LOGIC_VECTOR (31 DOWNTO 0);
+         datab           : IN STD_LOGIC_VECTOR (31 DOWNTO 0);
+         result          : OUT STD_LOGIC_VECTOR (31 DOWNTO 0));
+  end component mf_alt_add_sub_u;
+  
   component mask_off_bits is
     port(B : in  std_logic_vector;
          X : out std_logic_vector);
@@ -232,8 +239,8 @@ architecture functional of alu is
 
   signal operation : integer;
   signal s_HI,s_LO, loc_HI,loc_LO, inp_HI,inp_LO, mask,mask_and : reg32;
-  signal sh_left, sh_right, sh_inp, sh_lft_ins, summ_diff : reg32;
-  signal addition, overflow, shift_arith,  wr_hi,wr_lo : std_logic;
+  signal sh_left, sh_right, sh_inp, sh_lft_ins, summ_diff, summ_diff_u : reg32;
+  signal addition, overflow, overflow_u, shift_arith,  wr_hi,wr_lo : std_logic;
   signal size,index, shift_amnt : reg5;
   
 begin
@@ -277,13 +284,13 @@ begin
                       i_C  := summ_diff;
                       ovfl <= overflow;
       when opADDU  => addition <= '1';
-                      i_C  := summ_diff;
+                      i_C  := summ_diff_u;
                       ovfl <= '0';
       when opSUB   => addition <= '0';
                       i_C  := summ_diff;
                       ovfl <= overflow;
       when opSUBU  => addition <= '0';
-                      i_C  := summ_diff;
+                      i_C  := summ_diff_u;
                       ovfl <= '0';
       when opAND   => i_C := A and B;
       when opOR    => i_C := A or  B;
@@ -297,7 +304,8 @@ begin
         end if;
         -- this instr cannot cause an exception
       when opSLTU  => addition <= '0';  -- ignore overflow/signal
-        i_C := x"0000000" & b"000" & summ_diff(31);
+                      i_C := x"0000000" & b"000" & summ_diff_u(31);
+                      ovfl <= '0';
       when opLUI   => i_C := B(15 downto 0) & x"0000";
       when opSWAP  =>                   -- word swap bytes within halfwords
         i_C := B(23 downto 16)&B(31 downto 24)&B(7 downto 0) &B(15 downto 8);
@@ -332,8 +340,13 @@ begin
     
   end process U_alu; -- -------------------------------------------
 
-  U_ADD_SUB: mf_alt_add_sub port map (add_sub => addition, overflow => overflow,
-                dataa  => A, datab => B, result => summ_diff);
+  U_ADD_SUB: mf_alt_add_sub             -- signed add/subtract
+    port map (add_sub => addition, overflow => overflow,
+              dataa  => A, datab => B, result => summ_diff);
+
+  U_ADD_SUB_U: mf_alt_add_sub_u         -- UNsigned add/subtract, no overflow
+    port map (add_sub => addition,
+              dataa  => A, datab => B, result => summ_diff_u);
 
   U_HILO: process (A,B, fun, loc_HI,loc_LO)
     variable i_hi,i_lo, i_quoc,i_rem: reg32;

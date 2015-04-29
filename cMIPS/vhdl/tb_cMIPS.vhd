@@ -600,6 +600,9 @@ begin  -- TB
     port map (rst,clk, io_uart_sel, io_uart_wait, wr, d_addr(2),
               cpu_data, uart_d_out,
               uart_txd, uart_rxd, uart_rts, uart_cts, uart_irq, bit_rt);
+              -- uncoment next line for loop back, comment out previous line
+              -- uart_txd, uart_txd, uart_rts, uart_cts, uart_irq, bit_rt);
+
   uart_cts <= '1';
   
   start_remota <= '0', '1' after 200*CLOCK_PER;

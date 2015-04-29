@@ -1,4 +1,7 @@
-	# mips-as -O0 -EL -mips32r2
+        ##
+        ## this test is run in User Mode
+        ##
+ 	# mips-as -O0 -EL -mips32r2
 	.include "cMIPS.s"
 	.text
 	.align 2
@@ -6,12 +9,15 @@
 	.global _exit
 	.global exit
 	.ent    _start
+
+	##
+	## reset leaves processor in kernel mode, all else disabled
+	##
 _start: nop
-        li   $k0, 0x10000002  # RESET_STATUS, kernel mode, all else disabled
-        mtc0 $k0, cop0_STATUS
 	li   $sp,(x_DATA_BASE_ADDR+x_DATA_MEM_SZ-8) # initialize SP: ramTop-8
-	nop
-	jal main
+	la   $k0, main
+	mtc0 $k0, cop0_EPC
+	eret # go into user mode, all else disabled
 	nop
 exit:	
 _exit:	nop	     # flush pipeline
@@ -34,13 +40,10 @@ excp_180:
 _excp_180:
 excp_200:	
 _excp_200:
-        mfc0 $k0, cop0_CAUSE
-	j excp_handler
-	nop
+        mfc0  $k0, cop0_CAUSE
+	sw    $k0,0($15)        # print CAUSE to stdout
+	addiu $7,$7,-1		# and decrement $7
 excp_180ret:
-	li   $k0, 0x10000000   # disable interrupts
-        mtc0 $k0, cop0_STATUS
-	mtc0 $zero, cop0_CAUSE # clear CAUSE
 	eret
 	.end _excp_180
 
@@ -52,12 +55,6 @@ excp_180ret:
 #	nop
 #	.end _excp_200
 
-excp_handler:
-	sw    $k0,0($15)        # print CAUSE to stdout
-	addiu $7,$7,-1		# and decrement $7
-	j excp_180ret
-
-	
 	.org x_ENTRY_POINT,0      # normal code starts at 0x0000.0100
 main:	la    $15,x_IO_BASE_ADDR
 	li    $7,4
