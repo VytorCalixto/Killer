@@ -51,8 +51,11 @@ package p_WIRES is
   subtype reg12 is std_logic_vector(11 downto 0);
   subtype reg16 is std_logic_vector(15 downto 0);
   subtype reg17 is std_logic_vector(16 downto 0);
+  subtype reg18 is std_logic_vector(17 downto 0);
+  subtype reg19 is std_logic_vector(18 downto 0);
   subtype reg24 is std_logic_vector(23 downto 0);
   subtype reg20 is std_logic_vector(19 downto 0);
+  subtype reg28 is std_logic_vector(27 downto 0);
   subtype reg30 is std_logic_vector(29 downto 0);
   subtype reg31 is std_logic_vector(30 downto 0);
   subtype reg32 is std_logic_vector(31 downto 0);
