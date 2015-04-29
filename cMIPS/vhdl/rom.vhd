@@ -400,7 +400,7 @@ x"00000000"  --  3fc: nop
   end init_rom;
 
   -- Declare the ROM signal and specify a default value. Quartus II
-  -- will create a memory initialization file (.mif) based on the 
+  -- will create a memory initialization file (ROM.mif) based on the 
   -- default value.
   signal rom : memory_t := init_rom;
 

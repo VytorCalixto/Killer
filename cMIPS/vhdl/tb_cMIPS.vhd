@@ -542,9 +542,6 @@ begin  -- TB
                     lcd_d_out       when b"1101",
                     (others => 'X') when others;
   
-  -- U_D_MMU: mem_d_addr <=        -- access Dcache with physical addresses
-  --   std_logic_vector(unsigned(d_addr) - unsigned(x_DATA_BASE_ADDR));
-
   U_D_CACHE: fake_d_cache   -- or d_cache
   -- U_D_CACHE: d_cache   -- or fake_d_cache
     port map (rst, clk4x,
