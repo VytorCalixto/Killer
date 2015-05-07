@@ -37,6 +37,9 @@ extern void startCounter(int, int);
 extern void stopCounter(void);
 extern int  readCounter(void);
 
+extern char *memcpy(char*, const char*, int);
+extern char *memset(char*, const int, int);
+
 extern void LCDinit(void);
 extern int  LCDprobe(void); 
 extern int  LCDset(int);

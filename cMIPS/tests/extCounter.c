@@ -4,23 +4,46 @@
 
 #include "cMIPS.h"
 
+#define FALSE (0==1)
+#define TRUE  ~(FALSE)
+
 #define N 4
 #define CNT_VALUE 0x40000040    // set count to 64 cycles
 
 void main(void) {
-  int i;
-  volatile int *counter;        // address of counter
+  int i, increased, new, old;
 
-  counter = (int *)IO_COUNT_ADDR;
 
-  *counter = CNT_VALUE;
+  startCounter(CNT_VALUE, 0);  // no interrupts
 
   for (i=0; i < N; i++) {       // repeat N rounds
     print(i);                   // print number of round
-    *counter = (int)(CNT_VALUE + (i<<2));  // num cycles increases with i
+
+    startCounter((CNT_VALUE + (i<<2)), 0);  // num cycles increases with i
+
+    increased = TRUE;
+    old = 0;
+
     do {
-      print((int)*counter);     // print out count value
-    } while ( (*counter & 0x3fffffff) < (CNT_VALUE & 0x3ffffff) );    // done?
+
+      if ( (new=readCounter()) > old) {
+	increased = increased & TRUE;
+	old = new;
+      } else {
+	increased = FALSE;
+      }
+
+    } while ( (readCounter() & 0x3fffffff) < (CNT_VALUE & 0x3ffffff) );    // done?
+
+    if (increased) {
+      to_stdout('o');
+      to_stdout('k');
+    } else {
+      to_stdout('e');
+      to_stdout('r');
+      to_stdout('r');
+    }
+
     to_stdout('\n');
   }
 

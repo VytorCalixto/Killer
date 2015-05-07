@@ -60,7 +60,11 @@ int strcopy(const char *y, char *x)
 }
 
 
-#define COUNTING 100  // how long to wait for last bits to be sent out
+
+#define SPEED 0       // operate at the highest data rate
+
+#define COUNTING ((SPEED+1)*100) // how long to wait for last bits to be sent out
+
 
 int main(void) { // send a string through the UART serial interface
   int i;
@@ -80,7 +84,7 @@ int main(void) { // send a string through the UART serial interface
 
   counter = (int *)IO_COUNT_ADDR; // counter's address
 
-  ctrl.speed = 0;  // operate at the highest data rate
+  ctrl.speed = SPEED;
   ctrl.intTX = 0;  // no interrupts
   ctrl.intRX = 0;
   ctrl.ign2  = 0;
@@ -102,6 +106,7 @@ int main(void) { // send a string through the UART serial interface
 
   // then wait until last char is sent out of the shift-register to return
   startCounter(COUNTING, 0);
+
   while ( (val=(readCounter() & 0x3fffffff)) < COUNTING )
     {}; 
 

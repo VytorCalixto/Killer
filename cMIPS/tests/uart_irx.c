@@ -48,7 +48,7 @@ int main(void) { // receive a string through the UART serial interface
   volatile int *bfr = &(_uart_buff[0]);
   volatile char c;
 
-  uart = (void *)IO_UART_BOT_ADDR; // bottom of UART address range
+  uart = (void *)IO_UART_ADDR; // bottom of UART address range
 
   ctrl.ign   = 0;
   ctrl.intTX = 0;

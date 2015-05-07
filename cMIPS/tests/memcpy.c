@@ -1,9 +1,9 @@
 
-# ifdef cMIPS
-   #include "cMIPS.h"
-#else
-   #include <stdio.h>
-#endif
+// # ifdef cMIPS
+#include "cMIPS.h"
+// #else
+//   #include <stdio.h>
+// #endif
 
 
 
@@ -24,7 +24,7 @@ int main(void) {
   int i,j,N;
 
   for (i=0; i<sSz; i++)
-    src[i] = i+'a';
+    src[i] = (char)i+'a';
 
   for (i=0; i<dSz; i++)
     dst[i] = (char)255;
@@ -37,11 +37,11 @@ int main(void) {
     s=src;
     d=dst;
     vet = memcpy(d, s, N);
-#ifdef cMIPS
+    //#ifdef cMIPS
     for (i=0; i<N; i++) { to_stdout(vet[i]); } ; to_stdout('\n');
-#else
+    //#else
     //  for (i=0; i<N; i++) { printf("%c", vet[i]); } ; printf("\n");
-#endif
+    //#endif
 
   }
 
@@ -53,11 +53,11 @@ int main(void) {
     N=j; 
     d=dst;
     vet = memset(d, (char)('c'+j), N);
-#ifdef cMIPS
+    //#ifdef cMIPS
     for (i=0; i<N; i++) { to_stdout(vet[i]); } ; to_stdout('\n');
-#else
+    //#else
     // for (i=0; i<N; i++) { printf("%c", vet[i]); } ; printf("\n");
-#endif
+    //#endif
 
 
   }
