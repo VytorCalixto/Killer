@@ -11,15 +11,16 @@
 #define CNT_VALUE 0x40000040    // set count to 64 cycles
 
 void main(void) {
-  int i, increased, new, old;
+  int i, increased, new, old, newValue;
 
-
-  startCounter(CNT_VALUE, 0);  // no interrupts
+  newValue = CNT_VALUE;
+  startCounter(newValue, 0);  // no interrupts
 
   for (i=0; i < N; i++) {       // repeat N rounds
     print(i);                   // print number of round
 
-    startCounter((CNT_VALUE + (i<<2)), 0);  // num cycles increases with i
+    newValue = CNT_VALUE + (i<<3);
+    startCounter(newValue, 0);  // num cycles increases with i
 
     increased = TRUE;
     old = 0;
@@ -29,11 +30,13 @@ void main(void) {
       if ( (new=readCounter()) > old) {
 	increased = increased & TRUE;
 	old = new;
+	print(new);             // print current count
       } else {
 	increased = FALSE;
       }
 
-    } while ( (readCounter() & 0x3fffffff) < (CNT_VALUE & 0x3ffffff) );    // done?
+    } while ( (readCounter() & 0x3fffffff) < (newValue & 0x3ffffff) );
+    // are we done yet?
 
     if (increased) {
       to_stdout('o');
