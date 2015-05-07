@@ -104,8 +104,8 @@ begin  -- behavioral
       index  := to_integer(u_addr);     -- indexed by word, not by byte
 
       assert (index >= 0) and (index < INST_MEM_SZ/4)
-        report "romRDindex out of bounds: " & natural'image(index)
-        severity failure;
+        report "romRDindex out of bounds: " & SLV32HEX(addr) & " = " &
+               natural'image(index)  severity failure;
 
       if sel = '0' and rising_edge(strobe) then 
         latched := index;

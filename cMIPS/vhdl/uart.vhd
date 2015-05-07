@@ -553,9 +553,9 @@ begin
 
   -- U_bit_rt_tx: counter8 port map (clk,rst,tx_ld,en_tx_clk,x"00",tx_bit_rt);
   with ctrl(2 downto 0) select
-    tx_baud_div <=      8/2 when b"000",
-                       16/2 when b"001",
-                       32/2 when b"010",
+    tx_baud_div <=      4/2 when b"000",
+                        8/2 when b"001",
+                       16/2 when b"010",
                       434/2 when b"011",
                       868/2 when b"100",
                      1302/2 when b"101",
@@ -605,9 +605,9 @@ begin
 
   -- U_bit_rt_rx:counter8 port map(clk,rst,reset_rxck,en_rx_clk,00,rx_bit_rt);
   with ctrl(2 downto 0) select
-    rx_baud_div <=      8/2 when b"000",
-                       16/2 when b"001",
-                       32/2 when b"010",
+    rx_baud_div <=      4/2 when b"000",
+                        8/2 when b"001",
+                       16/2 when b"010",
                       434/2 when b"011",
                       868/2 when b"100",
                      1302/2 when b"101",
@@ -1041,9 +1041,9 @@ begin
   -- baud rate generators ---------------------------------------------
 
   with bit_rt select
-    tx_baud_div <=      8/2 when b"000",
-                       16/2 when b"001",
-                       32/2 when b"010",
+    tx_baud_div <=      4/2 when b"000",
+                        8/2 when b"001",
+                       16/2 when b"010",
                       434/2 when b"011",
                       868/2 when b"100",
                      1302/2 when b"101",
@@ -1071,9 +1071,9 @@ begin
 
   -- RX clock daud rate
   with bit_rt select
-    rx_baud_div <=      8/2 when b"000",
-                       16/2 when b"001",
-                       32/2 when b"010",
+    rx_baud_div <=      4/2 when b"000",
+                        8/2 when b"001",
+                       16/2 when b"010",
                       434/2 when b"011",
                       868/2 when b"100",
                      1302/2 when b"101",

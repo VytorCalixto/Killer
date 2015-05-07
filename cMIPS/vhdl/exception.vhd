@@ -136,7 +136,9 @@ entity reg_excp_EX_MM is
        EX_cop0_val:   in  reg32;
        MM_cop0_val:   out reg32;
        EX_trapped:    in  std_logic;
-       MM_ex_trapped: out std_logic);
+       MM_ex_trapped: out std_logic;
+       EX_mfc0:       in  std_logic;
+       MM_mfc0:       out std_logic);
 end reg_excp_EX_MM;
 
 architecture funcional of reg_excp_EX_MM is
@@ -156,6 +158,7 @@ begin
         MM_cop0_a_c   <= EX_cop0_a_c   ;
         MM_cop0_val   <= EX_cop0_val   ;
         MM_ex_trapped <= EX_trapped    ;
+        MM_mfc0       <= EX_mfc0       ;
       end if;
     end if;
   end process;

@@ -92,14 +92,79 @@ void dumpRAM(void) {
 //=======================================================================
 void readStats(sStats *s) {
   int *IO = (int *)IO_STATS_ADDR;
-
+#if 0
   s->dc_ref    = *(IO+0);
   s->dc_rd_hit = *(IO+1);
   s->dc_wr_hit = *(IO+2);
   s->dc_flush  = *(IO+3);
   s->ic_ref    = *(IO+4);
   s->ic_hit    = *(IO+5);
+#endif
 }; //--------------------------------------------------------------------
+
+
+//=======================================================================
+// memcpy -- need this to fool GCC into believing this is libc
+//=======================================================================
+char *memcpy(char *dst, const char *src, int n) {
+  int cnt;
+  char *ret;
+
+  ret = dst;
+  cnt = (int)src % 4;
+  while( (cnt > 0) && (n > 0) ) {
+    *dst = *src;
+    cnt--; n--;
+    dst++; src++;
+  } // src is now word aligned
+  while ( n >= 4) {
+    if ( ((int)dst % 4) == 0 ) { // dst aligned to word x00
+      *((int *)dst) = *((int *)src);
+    } else if ( ((int)dst % 2) == 0 ) { // dst aligned to short xx0
+      *((short *)dst) = *((short *)src);
+      *((short *)(dst+2)) = *((short *)(src+2));
+    } else { // dst aligned to char
+      *dst = *src;
+      *((short *)(dst+1)) = *((short *)(src+1));
+      *(dst+3) = *(src+3);
+    }
+    n-=4; src+=4; dst+=4;
+  }
+  while(n > 0) {
+    *dst = *src;
+    n--; dst++; src++;
+  }
+  return(ret);
+}; //--------------------------------------------------------------------
+
+
+//=======================================================================
+// memset -- need this to fool GCC into believing this is libc
+//=======================================================================
+char *memset(char *dst, const int val, int len) {
+  unsigned char *ptr = (unsigned char*)dst;
+  int cnt;
+
+  cnt = (int)ptr % 4;
+  while( (cnt > 0) && (len > 0) ) {
+    *ptr = (char)val;
+    cnt--; len--;
+    ptr++;
+  } // ptr is now word aligned
+  cnt = val | (val<<8) | (val<<16) | (val<<24);
+  while (len >= 4) {
+    *((int *)ptr) = cnt;
+    len -= 4;
+    ptr += 4;
+  }
+  while(len > 0) {
+    *ptr = (char)val;
+    len--;
+    ptr++;
+  }
+  return(dst);
+}; //--------------------------------------------------------------------
+
 
 
 #endif // FOR_SIMULATION
@@ -114,7 +179,7 @@ void readStats(sStats *s) {
 void startCounter(int n, int interr) {
   int *IO = (int *)IO_COUNT_ADDR;
   int interrupt;
-  // set bit 31 to cause an interrupt on count==0, reset for no interrupt
+  // set bit 31 to cause an interrupt on count==n, reset for no interrupt
   interrupt = (interr == 0 ? 0x00000000 : 0x80000000);
 
   // set bit 30 to start counting, reset to stop
@@ -313,3 +378,5 @@ void DSP7SEGput(int MSD, int MSdot, int lsd, int lsdot) {
   *IO = dot1 | dot0 | dig1 | dig0;
 }
 //-----------------------------------------------------------------------
+
+

@@ -9,23 +9,25 @@
 	.global exit
 	.org x_INST_BASE_ADDR,0
 	.ent _start
-_start: nop
 
-	# set STATUS, cop0, kernel mode, interrupts disabled
-        li   $k0, cop0_STATUS_reset
-        mtc0 $k0, cop0_STATUS
+        ##
+        ## reset leaves processor in kernel mode, all else disabled
+        ##
 
-	# set CAUSE, "no exceptions", interrVec separated from exceptVec
-	li   $k0, cop0_CAUSE_reset   # 0x0080007c
-	mtc0 $k0, cop0_CAUSE
-	
 	# initialize SP: ramTop-8
-	li   $sp,(x_DATA_BASE_ADDR+x_DATA_MEM_SZ-8)
+_start: li   $sp,(x_DATA_BASE_ADDR+x_DATA_MEM_SZ-8)
 
-	# set STATUS, cop0, user mode, hw interrupt IRQ2,IRQ3 enabled
-        li   $k0, 0x10000c09
+	# set STATUS, cop0, hw interrupt IRQ2,IRQ3 enabled
+        li   $k0, 0x10000c01
         mtc0 $k0, cop0_STATUS
-	
+ 
+	la   $k0, _go_main  # start main() in user mode
+        mtc0 $k0, cop0_EPC
+        nop
+        eret      # go into user mode, all else disabled
+	nop
+
+_go_main:
 	nop
 	jal main  # on returning from main(), MUST go into exit()
 	nop       #  to stop the simulation.
@@ -59,7 +61,7 @@ _excp_0000:
 	j nmi_reset_handler
 	nop
 	#excp_0000ret:
-	#	li   $k0, 0x1000ff09   # enable interrupts, user mode
+	#	li   $k0, 0x1000ff01   # enable interrupts, user mode
 	#       mtc0 $k0, cop0_STATUS
 	#	eret
 
@@ -117,8 +119,8 @@ excp_0180ret:
 	.extern UARTinterr
 	.org x_EXCEPTION_0200,0   # exception vector_200, interrupt handlers
 	.ent _excp_0200
-	.set M_CauseIM,0x0000ff00 # keep bits 15..8 -> IM = IP
-	.set M_StatusIEn,0x0000ff09 # user mode, enable all interrupts
+	.set M_CauseIM,0x0000ff00   # keep bits 15..8 -> IM = IP
+	.set M_StatusIEn,0x0000ff01 # user mode, enable all interrupts
 excp_0200:
 _excp_0200:
 	mfc0 $k0, cop0_CAUSE
@@ -175,13 +177,10 @@ Dismiss:                # No pending request, must have been noise
 	nop             #  do nothing and return
 
 excp_0200ret:
-	li   $k0, 0x08800000
-	mtc0 $k0, cop0_CAUSE
-
 	mfc0 $k0, cop0_STATUS	# Read STATUS register
 	lui  $k1, 0xffff           #  and do not modify its contents
 	ori  $k0, $k0, M_StatusIEn #  except for re-enabling interrupts
-	ori  $k1, $k1, 0xfff9      #  and going into user mode
+	ori  $k1, $k1, 0xfff1      #  and going into user mode
 	and  $k0, $k1, $k0
 	mtc0 $k0, cop0_STATUS	
 	eret			# Return from interrupt
@@ -194,5 +193,3 @@ excp_0200ret:
 	#----------------------------------------------------------------
 	# normal code starts here -- do not edit next line
 	.org x_ENTRY_POINT,0
-
-	

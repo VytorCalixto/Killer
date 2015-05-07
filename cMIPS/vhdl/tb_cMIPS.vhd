@@ -463,7 +463,8 @@ begin  -- TB
 
   mf_altclkctrl_inst_clk4x : mf_altclkctrl port map (
     inclk => clk4x180, outclk => clk4x);
-  
+
+  phi1 <= '0';
   mf_altclkctrl_inst_phi0 : mf_altclkctrl port map (
     inclk => phi0in, outclk => phi0);
   mf_altclkctrl_inst_phi2 : mf_altclkctrl port map (
@@ -518,7 +519,7 @@ begin  -- TB
     port map (rst, clk, mem_i_sel,rom_rdy, phi2, mem_i_addr,datrom);
 
   U_IO_ADDR_DEC: io_addr_decode
-    port map (clk,rst, cpu_d_aVal, d_addr, dev_select_io,
+    port map (phi3,rst, cpu_d_aVal, d_addr, dev_select_io,
               io_print_sel, io_stdout_sel, io_stdin_sel,io_read_sel, 
               io_write_sel, io_counter_sel, io_fpu_sel, io_uart_sel,
               io_sstats_sel, io_7seg_sel, io_keys_sel, io_lcd_sel,
@@ -602,7 +603,7 @@ begin  -- TB
 
   uart_cts <= '1';
   
-  start_remota <= '0', '1' after 200*CLOCK_PER;
+  start_remota <= '0', '1' after 400*CLOCK_PER;
   
   U_uart_remota: remota generic map ("serial.out","serial.inp")
     port map (rst, clk, start_remota, uart_txd, uart_rxd, bit_rt);
@@ -744,7 +745,7 @@ begin
                           x_IO_BASE_ADDR(HI_SEL_BITS downto LO_SEL_BITS)) )
           else '1';
   
-  U_decode: process(aVal,addr)
+  U_decode: process(clk, aVal, addr)
     variable dev_sel    : reg4;
     constant is_noise   : integer := 0;
     constant is_print   : integer := 2;
@@ -778,15 +779,15 @@ begin
     
     case dev is -- to_integer(signed(addr(HI_ADDR downto LO_ADDR))) is
       when  0 => dev_sel     := std_logic_vector(to_signed(is_print, 4));
-                 print_sel   <= aVal;
+                 print_sel   <= aVal or clk;
       when  1 => dev_sel     := std_logic_vector(to_signed(is_stdout, 4));
-                 stdout_sel  <= aVal;
+                 stdout_sel  <= aVal or clk;
       when  2 => dev_sel     := std_logic_vector(to_signed(is_stdin, 4));
-                 stdin_sel   <= aVal;
+                 stdin_sel   <= aVal or clk;
       when  3 => dev_sel     := std_logic_vector(to_signed(is_read, 4));
-                 read_sel    <= aVal;
+                 read_sel    <= aVal or clk;
       when  4 => dev_sel     := std_logic_vector(to_signed(is_write, 4));
-                 write_sel   <= aVal;
+                 write_sel   <= aVal or clk;
       when  5 => dev_sel     := std_logic_vector(to_signed(is_count, 4));
                  counter_sel <= aVal;
       when  6 => dev_sel     := std_logic_vector(to_signed(is_FPU, 4));

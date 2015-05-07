@@ -146,7 +146,7 @@ package p_MEMORY is
   -- MMU parameters -----------------------------------------------------
 
   -- constants for CONFIG1 cop0 register (Table 8-24 pg 103)
-  constant MMU_CAPACITY : natural := 4;
+  constant MMU_CAPACITY : natural := 8;
   constant MMU_CAPACITY_BITS : natural := log2_ceil( MMU_CAPACITY );
   constant MMU_SIZE: reg6 := 
     std_logic_vector(to_signed( (MMU_CAPACITY-1), 6) );
@@ -154,21 +154,28 @@ package p_MEMORY is
   
   constant VABITS       : natural := 32;
   constant PABITS       : natural := 32;
-  constant PAGE_SZ      : natural := 1024;   -- 1k pages
+  constant PAGE_SZ      : natural := 4096;   -- 4k pages
   constant PAGE_SZ_BITS : natural := log2_ceil( PAGE_SZ );
 
   constant PPN_BITS     : natural := PABITS - PAGE_SZ_BITS;
   constant VA_HI_BIT    : natural := 31; -- VAaddr in EntryHi 31..PG_size
-  constant VA_LO_BIT    : natural := PAGE_SZ_BITS;
+  constant VA_LO_BIT    : natural := PAGE_SZ_BITS + 1;  -- maps 2 phy-pages
 
   constant ASID_HI_BIT  : natural := 7;  -- ASID   in EntryHi 7..0
   constant ASID_LO_BIT  : natural := 0;
 
   constant EHI_ASIDLO_BIT : natural := 0;
   constant EHI_ASIDHI_BIT : natural := 7;  
-  constant EHI_ALO_BIT  : natural := PAGE_SZ_BITS;
-  constant EHI_AHI_BIT  : natural := EHI_ALO_BIT + PPN_BITS - 1;
+  constant EHI_ALO_BIT  : natural := PAGE_SZ_BITS + 1;  -- maps 2 phy-pages
+  constant EHI_AHI_BIT  : natural := 31;
 
+  constant TAG_ASIDLO_BIT : natural := 0;
+  constant TAG_ASIDHI_BIT : natural := 7;
+  constant TAG_G_BIT    : natural := 8;
+  constant TAG_Z_BIT    : natural := 9;
+  constant TAG_ALO_BIT  : natural := PAGE_SZ_BITS + 1;  -- maps 2 phy-pages
+  constant TAG_AHI_BIT  : natural := 31;
+  
   constant ELO_G_BIT    : natural := 0;
   constant ELO_V_BIT    : natural := 1;
   constant ELO_D_BIT    : natural := 2;
@@ -177,13 +184,6 @@ package p_MEMORY is
   constant ELO_ALO_BIT  : natural := 6;
   constant ELO_AHI_BIT  : natural := ELO_ALO_BIT + PPN_BITS - 1;
 
-  constant TAG_ASIDLO_BIT : natural := 0;
-  constant TAG_ASIDHI_BIT : natural := 7;
-  constant TAG_G_BIT    : natural := 8;
-  constant TAG_Z_BIT    : natural := 9;
-  constant TAG_AHI_BIT  : natural := 31;  
-  constant TAG_ALO_BIT  : natural := TAG_AHI_BIT - PPN_BITS + 1;
-
   constant DAT_G_BIT    : natural := 0;
   constant DAT_V_BIT    : natural := 1;
   constant DAT_D_BIT    : natural := 2;
@@ -191,15 +191,102 @@ package p_MEMORY is
   constant DAT_CHI_BIT  : natural := 5;  
   constant DAT_ALO_BIT  : natural := 6;
   constant DAT_AHI_BIT  : natural := DAT_ALO_BIT + PPN_BITS - 1;
+  constant DAT_REG_BITS : natural := DAT_ALO_BIT + PPN_BITS;
 
- 
+  subtype mmu_dat_reg is std_logic_vector (DAT_AHI_BIT downto 0);
+  
   subtype  MMU_idx_bits is std_logic_vector(MMU_CAPACITY_BITS-1 downto 0);
   constant MMU_idx_0s : std_logic_vector(30 downto MMU_CAPACITY_BITS) :=
     (others => '0');
   constant MMU_IDX_BIT : natural := 31;  -- probe hit=1, miss=0
+
+  -- VA tags map a pair of PHY pages, thus VAddr is 1 bit less than (VABITS-1..PAGE_SZ_BITS)
+  constant tag_zeros : std_logic_vector(PAGE_SZ_BITS downto 0) := (others => '0');
+  constant tag_ones  : std_logic_vector(VABITS-1 downto PAGE_SZ_BITS+1) := (others => '1');
+  constant tag_mask  : reg32 := tag_ones & tag_zeros;
+
   
-  constant mmu_PageMask : reg32 := x"00000000";  -- pg 68, 1k pages only
-  -- constant mmu_PageMask : reg32 := x"00001800";  -- pg 68, 4k pages only
+  constant x_ROM_PPN_0 : reg32 := std_logic_vector(to_signed(INST_BASE_ADDR + 0*PAGE_SZ, 32));
+  constant x_ROM_PPN_1 : reg32 := std_logic_vector(to_signed(INST_BASE_ADDR + 1*PAGE_SZ, 32));
+  constant x_ROM_PPN_2 : reg32 := std_logic_vector(to_signed(INST_BASE_ADDR + 2*PAGE_SZ, 32));
+  constant x_ROM_PPN_3 : reg32 := std_logic_vector(to_signed(INST_BASE_ADDR + 3*PAGE_SZ, 32));
+  constant x_ROM_PPN_4 : reg32 := std_logic_vector(to_signed(INST_BASE_ADDR + 4*PAGE_SZ, 32));
+  constant x_ROM_PPN_5 : reg32 := std_logic_vector(to_signed(INST_BASE_ADDR + 5*PAGE_SZ, 32));
+  constant x_ROM_PPN_6 : reg32 := std_logic_vector(to_signed(INST_BASE_ADDR + 6*PAGE_SZ, 32));
+  constant x_ROM_PPN_7 : reg32 := std_logic_vector(to_signed(INST_BASE_ADDR + 7*PAGE_SZ, 32));
+
+  constant MMU_ini_tag_ROM0 : reg32 := x_ROM_PPN_0 and tag_mask;
+  constant MMU_ini_dat_ROM0 : mmu_dat_reg := 
+   x_ROM_PPN_0(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
+  constant MMU_ini_dat_ROM1 : mmu_dat_reg := 
+   x_ROM_PPN_1(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
+
+  constant MMU_ini_tag_ROM2 : reg32 := x_ROM_PPN_2 and tag_mask;
+  constant MMU_ini_dat_ROM2 : mmu_dat_reg := 
+   x_ROM_PPN_2(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
+  constant MMU_ini_dat_ROM3 : mmu_dat_reg := 
+   x_ROM_PPN_3(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
+
+  constant MMU_ini_tag_ROM4 : reg32 := x_ROM_PPN_4 and tag_mask;
+  constant MMU_ini_dat_ROM4 : mmu_dat_reg := 
+   x_ROM_PPN_4(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
+  constant MMU_ini_dat_ROM5 : mmu_dat_reg := 
+   x_ROM_PPN_5(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
+
+  constant MMU_ini_tag_ROM6 : reg32 := x_ROM_PPN_6 and tag_mask;
+  constant MMU_ini_dat_ROM6 : mmu_dat_reg := 
+   x_ROM_PPN_6(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
+  constant MMU_ini_dat_ROM7 : mmu_dat_reg := 
+   x_ROM_PPN_7(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
+
+
+
+  constant x_RAM_PPN_0 : reg32 := std_logic_vector(to_signed(DATA_BASE_ADDR + 0*PAGE_SZ, 32));
+  constant x_RAM_PPN_1 : reg32 := std_logic_vector(to_signed(DATA_BASE_ADDR + 1*PAGE_SZ, 32));
+  constant x_RAM_PPN_2 : reg32 := std_logic_vector(to_signed(DATA_BASE_ADDR + 2*PAGE_SZ, 32));
+  constant x_RAM_PPN_3 : reg32 := std_logic_vector(to_signed(DATA_BASE_ADDR + 3*PAGE_SZ, 32));
+  constant x_RAM_PPN_4 : reg32 := std_logic_vector(to_signed(DATA_BASE_ADDR + 4*PAGE_SZ, 32));
+  constant x_RAM_PPN_5 : reg32 := std_logic_vector(to_signed(DATA_BASE_ADDR + 5*PAGE_SZ, 32));
+  constant x_RAM_PPN_6 : reg32 := std_logic_vector(to_signed(DATA_BASE_ADDR + 6*PAGE_SZ, 32));
+  constant x_RAM_PPN_7 : reg32 := std_logic_vector(to_signed(DATA_BASE_ADDR + 7*PAGE_SZ, 32));
+  
+  constant MMU_ini_tag_RAM0 : reg32 := x_RAM_PPN_0 and tag_mask;
+  constant MMU_ini_dat_RAM0 : mmu_dat_reg := 
+   x_RAM_PPN_0(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
+  constant MMU_ini_dat_RAM1 : mmu_dat_reg := 
+   x_RAM_PPN_1(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
+
+  constant MMU_ini_tag_RAM2 : reg32 := x_RAM_PPN_2 and tag_mask;
+  constant MMU_ini_dat_RAM2 : mmu_dat_reg := 
+   x_RAM_PPN_2(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
+  constant MMU_ini_dat_RAM3 : mmu_dat_reg := 
+   x_RAM_PPN_3(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
+
+  constant MMU_ini_tag_RAM4 : reg32 := x_RAM_PPN_4 and tag_mask;
+  constant MMU_ini_dat_RAM4 : mmu_dat_reg := 
+   x_RAM_PPN_4(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
+  constant MMU_ini_dat_RAM5 : mmu_dat_reg := 
+   x_RAM_PPN_5(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
+
+  constant MMU_ini_tag_RAM6 : reg32 := x_RAM_PPN_6 and tag_mask;
+  constant MMU_ini_dat_RAM6 : mmu_dat_reg := 
+   x_RAM_PPN_6(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
+  constant MMU_ini_dat_RAM7 : mmu_dat_reg := 
+   x_RAM_PPN_7(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
+
+
+  constant x_IO_PPN_0 : reg32 := std_logic_vector(to_signed(IO_BASE_ADDR + 0*PAGE_SZ, 32));
+  constant x_IO_PPN_1 : reg32 := std_logic_vector(to_signed(IO_BASE_ADDR + 1*PAGE_SZ, 32));
+
+  constant MMU_ini_tag_IO : reg32 := x_IO_BASE_ADDR and tag_mask;
+  constant MMU_ini_dat_IO0 : mmu_dat_reg := 
+   x_IO_PPN_0(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
+  constant MMU_ini_dat_IO1 : mmu_dat_reg := 
+   x_IO_PPN_1(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
+
+  
+  -- constant mmu_PageMask : reg32 := x"00000000";  -- pg 68, 1k pages only
+  constant mmu_PageMask : reg32 := x"00001800";  -- pg 68, 4k pages only
 
   
 end p_MEMORY;

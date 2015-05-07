@@ -53,6 +53,8 @@ entity I_CACHE_fpga is
   constant IC_BOT_W_SEL : natural :=
     32 - (IC_TAG_BITS + IC_INDEX_BITS + IC_WORD_SEL_BITS);
 
+  constant TAG_IDX_REG_INI: std_logic_vector(IC_TAG_BITS + IC_INDEX_BITS - 1 downto 0) :=
+    (others => '0');
   subtype tag_address is integer range 0 to (IC_NUM_BLOCKS - 1);
   subtype ram_address is integer range 0 to (IC_NUM_WORDS - 1);
   subtype tag_sel_width  is std_logic_vector((IC_TAG_BITS - 1) downto 0);
@@ -84,7 +86,7 @@ architecture structural of I_CACHE_fpga is
   end component register32;
 
   component registerN is
-    generic (NUM_BITS: integer);
+    generic (NUM_BITS: integer; INIT_VAL: std_logic_vector);
     port(clk, rst, ld: in  std_logic;
          D:            in  std_logic_vector(NUM_BITS-1 downto 0);
          Q:            out std_logic_vector(NUM_BITS-1 downto 0));
@@ -189,7 +191,7 @@ begin
               d_str_rd, mem_rdy, cached_data);
 
   cpu_data <= hold_data when ( hit = '0' ) else cached_data;  
-  U_HOLD_INSTR: registerN  generic map ( 32 )
+  U_HOLD_INSTR: registerN  generic map ( 32, x"00000000" )
     port map (mem_rdy, rst, '0', mem_data, hold_data);
 
   
@@ -213,7 +215,7 @@ begin
   ld_addr <= not(fetching);
   
   U_TAG_INDEX_REGISTER: registerN            -- clk,rst,ld=0
-    generic map ( IC_TAG_BITS + IC_INDEX_BITS )
+    generic map ( IC_TAG_BITS + IC_INDEX_BITS, TAG_IDX_REG_INI)
     port map (fetching, rst, '0', cpu_tag_index, tag_index);
 
   miss_under_miss <= '1' when ( cpu_tag_index /= tag_index ) else '0';

@@ -4,10 +4,10 @@
 #include "cMIPS.h"
 
 #define MAX   100
-#define FALSE 0
+#define FALSE (0==1)
 #define TRUE  ~FALSE
 
-extern _counter_buff;
+extern _counter_val;
 
 int p[MAX];
 
@@ -16,7 +16,10 @@ void main() {
   int i, k, iter;
   int num;
 
-  _counter_buff = 0;   // variable where num interrupts is accumulated
+  enableInterr();
+
+  _counter_val = 0;   // variable to accumulate number of interrupts
+
   startCounter(200,TRUE);   // counter will interrupt after N cycles
 
   p[0] = 0;
@@ -51,7 +54,16 @@ void main() {
   to_stdout('\n');
   print(num); // == x01a
   to_stdout('\n');
-  print( _counter_buff );
 
+  if (_counter_val > 10) {   // more than 10 interrupts ?
+    to_stdout('o');
+    to_stdout('k');
+  } else {
+    to_stdout('e');
+    to_stdout('r');
+    to_stdout('r');
+  }
+  to_stdout('\n');
+  to_stdout('\n');
 }
 

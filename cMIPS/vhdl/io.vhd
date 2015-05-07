@@ -271,7 +271,7 @@ end do_interrupt;
 architecture behavioral of do_interrupt is
 
   component registerN is
-    generic (NUM_BITS: integer);
+    generic (NUM_BITS: integer; INIT_VAL: std_logic_vector);
     port(clk, rst, ld: in  std_logic;
          D:            in  std_logic_vector;
          Q:            out std_logic_vector);
@@ -301,7 +301,7 @@ begin
   
   Dlimit <= data_inp(NUM_BITS-1 downto 0);
 
-  U_LIMIT: registerN  generic map (NUM_BITS)
+  U_LIMIT: registerN  generic map (NUM_BITS, START_COUNT)
     port map (clk, rst, ld_reg, Dlimit, Qlimit);
 
   en <= cnt_en and (not equals);
@@ -478,12 +478,14 @@ entity to_7seg is
         display0 : out reg8;
         display1 : out reg8);
   constant NUM_BITS : integer := 10;    -- 2 decimal points, 2 hex digits
+  subtype c_width is std_logic_vector(NUM_BITS - 1 downto 0);
+  constant START_COUNT : c_width := (others => '0');
 end to_7seg;
 
 architecture behavioral of to_7seg is
 
   component registerN is
-    generic (NUM_BITS: integer);
+    generic (NUM_BITS: integer; INIT_VAL: std_logic_vector);
     port(clk, rst, ld: in  std_logic;
          D:            in  std_logic_vector;
          Q:            out std_logic_vector);
@@ -499,7 +501,7 @@ architecture behavioral of to_7seg is
   
 begin
   
-  U_HOLD_data: registerN generic map (NUM_BITS)
+  U_HOLD_data: registerN generic map (NUM_BITS, START_COUNT)
     port map (clk, rst, sel, data(NUM_BITS-1 downto 0), value);
 
   U_DSP1: display_7seg port map (value(7 downto 4), value(9), display1);
@@ -538,10 +540,13 @@ entity read_keys is
         data     : out reg32;
         kbd      : in  std_logic_vector (11 downto 0);
         sw       : in  std_logic_vector (3 downto 0));
-  constant DEB_BITS : integer := 16;  -- debounce counter width
+  constant DEB_BITS : integer := 16;    -- debounce counter width
   constant CNT_MAX : integer := (2**DEB_BITS - 1);
   constant x_DEB_CYCLES : std_logic_vector(DEB_BITS-1 downto 0)
     := std_logic_vector(to_signed((CNT_MAX - DEB_CYCLES),DEB_BITS));
+  constant NUM_BITS : integer := 4;     -- four bits to hold key number
+  subtype c_width is std_logic_vector(NUM_BITS - 1 downto 0);
+  constant NO_KEY : c_width := (others => '0');
 end read_keys;
 
 architecture behavioral of read_keys is
@@ -552,7 +557,7 @@ architecture behavioral of read_keys is
   end component FFD;
 
   component registerN is
-    generic (NUM_BITS: integer);
+    generic (NUM_BITS: integer; INIT_VAL: std_logic_vector);
     port(clk, rst, ld: in  std_logic;
          D:            in  std_logic_vector(NUM_BITS-1 downto 0);
          Q:            out std_logic_vector(NUM_BITS-1 downto 0));
@@ -592,7 +597,7 @@ begin
     port map (clk=>clk, rst=>rst, ld=>cnt_ld, en=>cnt_en,
               D=>x_DEB_CYCLES, Q=>open, co=>debounced); 
   
-  U_NEW_DATA: registerN  generic map (4)
+  U_NEW_DATA: registerN  generic map (4, NO_KEY)
     port map (clk, rst, new_ld, keys_data, cpu_data);
 
   d <= new_ld & sel;                    -- new_ld, sel active in '0'
@@ -715,6 +720,8 @@ entity LCD_display is
         LCD_EN   : out   std_logic; -- LCD enable=1
         LCD_BLON : out   std_logic);
   constant NUM_BITS : integer := 8;
+  subtype c_width is std_logic_vector(NUM_BITS - 1 downto 0);
+  constant START_VALUE : c_width := (others => '0');
 end LCD_display;
 
 architecture behavioral of LCD_display is
@@ -728,7 +735,7 @@ architecture behavioral of LCD_display is
   end component wait_states;
   
   component registerN is
-    generic (NUM_BITS: integer);
+    generic (NUM_BITS: integer; INIT_VAL: std_logic_vector);
     port(clk, rst, ld: in  std_logic;
          D:            in  std_logic_vector;
          Q:            out std_logic_vector);
@@ -762,10 +769,10 @@ begin
   sel_rs <= addr when sel = '0' else RS;
   U_INPUT_RS: FFD port map (clk, rst, '1', sel_rs, RS);
 
-  U_INPUT: registerN generic map (NUM_BITS)
+  U_INPUT: registerN generic map (NUM_BITS, START_VALUE)
   port map (clk, rst, sel, data_inp(NUM_BITS-1 downto 0), inp_data);
 
-  U_OUTPUT: registerN generic map (NUM_BITS)
+  U_OUTPUT: registerN generic map (NUM_BITS, START_VALUE)
   port map (clk, rst, lcd_read, out_data, data_out(NUM_BITS-1 downto 0));
   data_out(31 downto NUM_BITS) <= (others => '0');
 

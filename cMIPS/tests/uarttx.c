@@ -1,3 +1,4 @@
+
 #include "cMIPS.h"
 
 typedef struct control { // control register fields (uses only ls byte)
@@ -43,7 +44,7 @@ typedef struct serial {
 #define LONG_STRING 1
 
 #if LONG_STRING
-char *dog = "\n  the quick brown fox jumps over the lazy dog\n";
+char *dog = "\n\tthe quick brown fox jumps over the lazy dog\n";
 char s[32];
 #else
 char s[32]; //  = "123";
@@ -63,7 +64,7 @@ int strcopy(const char *y, char *x)
 
 int main(void) { // send a string through the UART serial interface
   int i;
-  volatile int state;
+  volatile int state, val;
   volatile Tserial *uart;  // tell GCC to not optimize away tests
   Tcontrol ctrl;
 
@@ -75,17 +76,17 @@ int main(void) { // send a string through the UART serial interface
   s[0] = '1';   s[1] = '2';   s[2] = '3';   s[3] = '\0';
 #endif 
 
-  uart = (void *)IO_UART_ADDR;  // bottom of UART address range
+  uart = (void *)IO_UART_ADDR;  // UART's address
 
-  counter = (int *)IO_COUNT_ADDR;
+  counter = (int *)IO_COUNT_ADDR; // counter's address
 
-  ctrl.speed = 0;
-  ctrl.intTX = 0; // 1;
+  ctrl.speed = 0;  // operate at the highest data rate
+  ctrl.intTX = 0;  // no interrupts
   ctrl.intRX = 0;
   ctrl.ign2  = 0;
   ctrl.ign   = 0;
   ctrl.rts   = 1;
-  uart->cs.ctl = ctrl;  // operate at highest data rate
+  uart->cs.ctl = ctrl;
 
   i = -1;
   do {
@@ -99,10 +100,10 @@ int main(void) { // send a string through the UART serial interface
   } while (s[i] != '\0');  // '\0' is transmitted in previous line
 
 
-  // then wait until last char is sent out of shift-register to return
+  // then wait until last char is sent out of the shift-register to return
   startCounter(COUNTING, 0);
-  while ( (i=(readCounter() & 0x3fffffff)) < COUNTING )
-    ; //print(i);
+  while ( (val=(readCounter() & 0x3fffffff)) < COUNTING )
+    {}; 
 
-  return i;  // so compiler won't optimize away the last loop
+  return val;  // so compiler won't optimize away the last loop
 }

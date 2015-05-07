@@ -100,7 +100,9 @@ architecture rtl of core is
          EX_cop0_val:   in  std_logic_vector;
          MM_cop0_val:   out std_logic_vector;
          EX_trapped:    in  std_logic;
-         MM_ex_trapped: out std_logic);
+         MM_ex_trapped: out std_logic;
+         EX_mfc0:       in  std_logic;
+         MM_mfc0:       out std_logic);
   end component reg_excp_EX_MM;
 
   component reg_excp_MM_WB is
@@ -134,6 +136,7 @@ architecture rtl of core is
   signal LL_update,LL_SC_abort,LL_SC_differ,EX_trapped,MM_ex_trapped: std_logic;
   signal int_req, EX_int_req: reg8;
   signal RF_nmi,EX_nmi : std_logic;
+  signal EX_mfc0, MM_mfc0 : std_logic;
   signal can_trap,EX_can_trap,MM_can_trap,WB_can_trap: reg2;
   signal is_trap, tr_signed, tr_stall: std_logic;
   signal tr_is_equal,EX_tr_is_equal, tr_less_than,EX_tr_less_than: std_logic;
@@ -146,7 +149,7 @@ architecture rtl of core is
   signal STATUSinp,STATUS, CAUSEinp,CAUSE, EPCinp,EPC : reg32;
   signal COUNT,COMPARE : reg32;
   signal count_eq_compare,count_update,count_enable : std_logic;
-  signal exception,EX_exception,is_exception: exception_type := exNOP;
+  signal exception,EX_exception,is_exception : exception_type := exNOP;
   signal ExcCode : reg5 := cop0code_NULL;
   signal exception_num, exception_dec : integer;       -- for debugging only
   signal next_instr_in_delay_slot,EX_is_delayslot : std_logic;
@@ -160,27 +163,41 @@ architecture rtl of core is
   -- MMU signals --
   signal INDEX, index_inp, RANDOM, WIRED, wired_inp : reg32;
   signal index_update, wired_update : std_logic;
-  signal EntryLo0, EntryLo1, EntryLo0_inp, EntryLo1_inp : reg32;
+  signal EntryLo0, EntryLo1, EntryLo0_inp, EntryLo1_inp, v_addr : reg32;
   signal EntryHi, EntryHi_inp : reg32;
-  signal Context, PageMask, Context_inp, PageMask_inp : reg32;
+  signal Context, PageMask, PageMask_inp : reg32;
   signal entryLo0_update, entryLo1_update, entryHi_update : std_logic;
-  signal context_update, tlb_read : std_logic;
-  signal tlb_entrylo0_mm,tlb_entrylo1_mm,tlb_context_mm,tlb_entryhi : reg32;
+  signal context_upd_pte, context_upd_bad, tlb_read : std_logic;
+  signal tlb_entrylo0_mm, tlb_entrylo1_mm, tlb_entryhi : reg32;
   signal tlb_tag0_updt, tlb_tag1_updt, tlb_tag2_updt, tlb_tag3_updt : std_logic;
+  signal tlb_tag4_updt, tlb_tag5_updt, tlb_tag6_updt, tlb_tag7_updt : std_logic;
   signal tlb_dat0_updt, tlb_dat1_updt, tlb_dat2_updt, tlb_dat3_updt : std_logic;
-  signal hit_pc, hit0_pc, hit1_pc, hit2_pc, hit3_pc : std_logic;
-  signal tlb_a0_pc, tlb_a1_pc, tlb_a2_pc : std_logic;
-  signal hit_mm, hit0_mm, hit1_mm, hit2_mm, hit3_mm : std_logic;
-  signal tlb_a0_mm, tlb_a1_mm, tlb_a2_mm : std_logic;
-  signal tlb_adr_pc, tlb_adr_mm, probe_adr : MMU_idx_bits;
-  signal tlb_probe, probe_hit : std_logic;
+  signal tlb_dat4_updt, tlb_dat5_updt, tlb_dat6_updt, tlb_dat7_updt : std_logic;
+  signal hit0_pc, hit1_pc, hit2_pc, hit3_pc, hit_pc : boolean;
+  signal hit4_pc, hit5_pc, hit6_pc, hit7_pc : boolean;
+  signal hit0_mm, hit1_mm, hit2_mm, hit3_mm, hit_mm : boolean;
+  signal hit4_mm, hit5_mm, hit6_mm, hit7_mm : boolean;
+  signal hit_mm_v, hit_mm_d, hit_pc_v : std_logic;
+  signal tlb_adr_mm : MMU_idx_bits;
+  signal tlb_probe, probe_hit, hit_mm_bit : std_logic;
   signal mm : std_logic_vector(VA_HI_BIT downto VA_LO_BIT);
-  signal tlb_adr : natural range 0 to (MMU_CAPACITY - 1);
-  signal tlb_ppn : std_logic_vector(PPN_BITS - 1 downto 0);
+  signal tlb_adr,tlb_a0_pc,tlb_a1_pc,tlb_a2_pc : natural range 0 to (MMU_CAPACITY-1);
+  signal hit_pc_adr, hit_mm_adr : natural range 0 to (MMU_CAPACITY-1);
+  signal tlb_a0_mm,tlb_a1_mm,tlb_a2_mm : natural range 0 to (MMU_CAPACITY-1);
+  signal tlb_ppn_pc0,tlb_ppn_pc1 : mmu_dat_reg;
+  signal tlb_ppn_mm0,tlb_ppn_mm1 : mmu_dat_reg;
+  signal tlb_ppn_mm, tlb_ppn_pc, tlb_ppn : std_logic_vector(PPN_BITS - 1 downto 0);
   
-  signal tlb_tag_inp, tlb_tag0, tlb_tag1, tlb_tag2, tlb_tag3 : reg32;
-  signal tlb_dat_inp, tlb_dat0, tlb_dat1, tlb_dat2, tlb_dat3 : reg28;
-  signal tlb_entryLo0, tlb_entryLo1, phy_i_addr : reg32;
+  signal tlb_tag0, tlb_tag1, tlb_tag2, tlb_tag3, tlb_tag_inp : reg32;
+  signal tlb_tag4, tlb_tag5, tlb_tag6, tlb_tag7, e_hi, e_hi_inp : reg32;
+  signal tlb_dat0_inp, tlb_dat1_inp, e_lo0, e_lo1 : mmu_dat_reg;
+  signal tlb_dat0_0, tlb_dat1_0, tlb_dat2_0, tlb_dat3_0 : mmu_dat_reg;
+  signal tlb_dat0_1, tlb_dat1_1, tlb_dat2_1, tlb_dat3_1 : mmu_dat_reg;
+  signal tlb_dat4_0, tlb_dat5_0, tlb_dat6_0, tlb_dat7_0 : mmu_dat_reg;
+  signal tlb_dat4_1, tlb_dat5_1, tlb_dat6_1, tlb_dat7_1 : mmu_dat_reg;
+
+  signal tlb_entryLo0, tlb_entryLo1, phy_i_addr, phy_d_addr : reg32;
+  signal tlb_context_inp : std_logic_vector(VABITS-1 downto PAGE_SZ_BITS+1);
   
   -- other components ------------ 
   
@@ -225,12 +242,12 @@ architecture rtl of core is
          Q:            out std_logic_vector);
   end component register32;
 
-  component register28 is
-    generic (INITIAL_VALUE: std_logic_vector);
+  component registerN is
+    generic (NUM_BITS: integer; INIT_VAL: std_logic_vector);
     port(clk, rst, ld: in  std_logic;
          D:            in  std_logic_vector;
          Q:            out std_logic_vector);
-  end component register28;
+  end component registerN;
 
   component counter32 is
     generic (INITIAL_VALUE: std_logic_vector);
@@ -313,7 +330,7 @@ architecture rtl of core is
 
   -- data memory --
   signal rd_data_raw, rd_data, WB_rd_data, WB_mem_data: reg32;
-  signal MM_B_data, WB_B_data: reg32;
+  signal MM_B_data, WB_B_data, d_addr_pre: reg32;
   signal jr_stall, br_stall, fwd_lwlr, sw_stall : std_logic;
   signal fwd_mem, WB_addr2: reg2;
 
@@ -470,23 +487,23 @@ architecture rtl of core is
     ('1','1',NIL,  '1','0','0',opNOP,"001","00", '0', "00",cNOP,"00"),--29
     ('1','1',NIL,  '1','0','0',opNOP,"001","00", '0', "00",cNOP,"00"),--30
     ('1','1',SPEC3,'0','0','0',opSPC,"001","00", '0', "00",cNOP,"00"),--special3
-    ('0','1',LB,   '0','1','0',opADD,"000","01", '1', "00",cNOP,"00"),--lb=32
-    ('0','1',LH,   '0','1','0',opADD,"000","01", '1', "00",cNOP,"00"),--lh=33
-    ('0','1',LWL,  '0','1','0',opADD,"000","01", '1', "00",cNOP,"00"),--lwl=34
-    ('0','1',LW,   '0','1','0',opADD,"000","01", '1', "00",cNOP,"00"),--lw=35
-    ('0','1',LBU,  '0','1','0',opADD,"000","01", '1', "00",cNOP,"00"),--lbu=36
-    ('0','1',LHU,  '0','1','0',opADD,"000","01", '1', "00",cNOP,"00"),--lhu=37
-    ('0','1',LWR,  '0','1','0',opADD,"000","01", '1', "00",cNOP,"00"),--lwr=38
+    ('0','1',LB,   '0','1','0',opADD,"000","01", '1', "00",cNOP,"11"),--lb=32
+    ('0','1',LH,   '0','1','0',opADD,"000","01", '1', "00",cNOP,"11"),--lh=33
+    ('0','1',LWL,  '0','1','0',opADD,"000","01", '1', "00",cNOP,"11"),--lwl=34
+    ('0','1',LW,   '0','1','0',opADD,"000","01", '1', "00",cNOP,"11"),--lw=35
+    ('0','1',LBU,  '0','1','0',opADD,"000","01", '1', "00",cNOP,"11"),--lbu=36
+    ('0','1',LHU,  '0','1','0',opADD,"000","01", '1', "00",cNOP,"11"),--lhu=37
+    ('0','1',LWR,  '0','1','0',opADD,"000","01", '1', "00",cNOP,"11"),--lwr=38
     ('1','1',NIL,  '1','0','0',opNOP,"001","00", '0', "00",cNOP,"00"),--39
-    ('0','0',SB,   '1','1','0',opADD,"001","00", '1', "00",cNOP,"00"),--sb=40
-    ('0','0',SH,   '1','1','0',opADD,"001","00", '1', "00",cNOP,"00"),--sh=41
+    ('0','0',SB,   '1','1','0',opADD,"001","00", '1', "00",cNOP,"11"),--sb=40
+    ('0','0',SH,   '1','1','0',opADD,"001","00", '1', "00",cNOP,"11"),--sh=41
     ('1','1',NIL,  '1','1','0',opNOP,"001","00", '0', "00",cNOP,"00"),--swl=42
-    ('0','0',SW,   '1','1','0',opADD,"001","00", '1', "00",cNOP,"00"),--sw=43
+    ('0','0',SW,   '1','1','0',opADD,"001","00", '1', "00",cNOP,"11"),--sw=43
     ('1','1',NIL,  '1','0','0',opNOP,"001","00", '0', "00",cNOP,"00"),--44
     ('1','1',NIL,  '1','0','0',opNOP,"001","00", '0', "00",cNOP,"00"),--45
     ('1','1',NIL,  '1','1','0',opNOP,"001","00", '0', "00",cNOP,"00"),--swr=46
     ('1','1',NIL,  '1','1','0',opNOP,"001","00", '0', "00",cNOP,"00"),--cache=47
-    ('0','1',LL,   '0','1','0',opADD,"000","01", '1', "00",cNOP,"00"),--ll=48
+    ('0','1',LL,   '0','1','0',opADD,"000","01", '1', "00",cNOP,"11"),--ll=48
     ('1','1',NIL,  '1','0','0',opNOP,"001","00", '0', "00",cNOP,"00"),--lwc1=49
     ('1','1',NIL,  '1','0','0',opNOP,"001","00", '0', "00",cNOP,"00"),--lwc2=50
     ('1','1',NIL,  '1','0','0',opNOP,"001","00", '0', "00",cNOP,"00"),--pref=51
@@ -494,7 +511,7 @@ architecture rtl of core is
     ('1','1',NIL,  '1','0','0',opNOP,"001","00", '0', "00",cNOP,"00"),--ldc1=53
     ('1','1',NIL,  '1','0','0',opNOP,"001","00", '0', "00",cNOP,"00"),--ldc2=54
     ('1','1',NIL,  '1','0','0',opNOP,"001","00", '0', "00",cNOP,"00"),--55
-    ('0','0',SC,   '0','1','0',opADD,"111","01", '1', "00",cNOP,"00"),--sc=56
+    ('0','0',SC,   '0','1','0',opADD,"111","01", '1', "00",cNOP,"11"),--sc=56
     ('1','1',NIL,  '1','0','0',opNOP,"001","00", '0', "00",cNOP,"00"),--swc1=57
     ('1','1',NIL,  '1','0','0',opNOP,"001","00", '0', "00",cNOP,"00"),--swc2=58
     ('1','1',NIL,  '1','0','0',opNOP,"001","00", '0', "00",cNOP,"00"),--59
@@ -740,9 +757,14 @@ begin
   -- U_INCPC: adder32 port map (x"00000004", PC_aligned, PCincd);
   -- PCincd <= std_logic_vector( 4 + signed(PC_aligned) );
   U_INCPC: mf_alt_add_4 PORT MAP( datab => PC_aligned, result => PCincd );
-  
+
+
+  -- uncomment this when NOT making use of the TLB
   i_addr <= PC_aligned;    -- fetch instruction from aligned address
 
+  -- uncomment this when making use of the TLB
+  -- i_addr <= phy_i_addr;
+  
   abort <= MM_abort or WB_abort;
   
   instr_fetched <= instr when (nullify = '0' and abort = '0'
@@ -1202,7 +1224,11 @@ begin
   begin
     FORWARD_A:
     if ((MM_wreg = '0')and(MM_a_c /= b"00000")and(MM_a_c = EX_a_rs)) then
-      i_A := MM_result;
+      if MM_mfc0 /= '1' then
+        i_A := MM_result;
+      else 
+        i_A := MM_cop0_val;
+      end if;
     elsif ((WB_wreg = '0')and(WB_a_c /= b"00000")and(WB_a_c = EX_a_rs)) then
       i_A := WB_C;
     else
@@ -1214,7 +1240,11 @@ begin
 
     FORWARD_B:
     if ((MM_wreg = '0')and(MM_a_c /= b"00000")and(MM_a_c = EX_a_rt)) then
-      i_B := MM_result;
+      if MM_mfc0 /= '1' then
+        i_B := MM_result;
+      else 
+        i_B := MM_cop0_val;
+      end if;
     elsif ((WB_wreg = '0')and(WB_a_c /= b"00000")and(WB_a_c = EX_a_rt)) then
       i_B := WB_C;
     else
@@ -1243,8 +1273,14 @@ begin
   EX_aVal_cond <= EX_aVal
                   or nullify_EX         -- abort ref if previous excep in EX
                   or abort;             -- abort ref if exception in MEM
+
+
+  -- this adder performs address calculation so the TLB can be checked during
+  --   EX and signal any exception as early as possible
+  U_VIR_ADDR_ADD: mf_alt_adder port map (alu_inp_A, EX_displ32, v_addr);
   
 
+  
   -- ----------------------------------------------------------------------
   PIPESTAGE_EX_MM: reg_EX_MM
     port map (clk,rst, EX_MM_ld,
@@ -1274,7 +1310,12 @@ begin
   rd_data_raw <= data_inp when (MM_wrmem = '1' and MM_aVal = '0') else
                  (others => 'X');
   
+  d_addr <= d_addr_pre;  -- without TLB
+
+  -- d_addr <= phy_d_addr;                 -- with TLB
+  
   MM_MEM_INTERFACE: process(MM_mem_t,MM_aVal,MM_wrmem, MM_result, rd_data_raw)
+    variable i_d_addr : reg32;
     variable bytes_read : reg32;
     variable i_byte_sel : reg4;
     variable i_byte : reg8;
@@ -1291,7 +1332,7 @@ begin
       when b"11" =>
         i_byte_sel := b"1111";              -- LW, SW, LWL, LWR
         bytes_read := rd_data_raw;
-        d_addr     <= MM_result(31 downto 2) & b"00";   -- align reference
+        i_d_addr   := MM_result(31 downto 2) & b"00";   -- align reference
         
         if ( MM_mem_t(3) = '0' and          -- normal LOAD, not LWL,LWR
              MM_aVal = '0' and MM_result(1 downto 0) /= b"00" ) then
@@ -1305,7 +1346,7 @@ begin
         end if;
 
       when b"10" =>
-        d_addr     <= MM_result(31 downto 1) & '0' ;    -- align reference
+        i_d_addr     := MM_result(31 downto 1) & '0' ;    -- align reference
         if MM_result(1) = '0' then                      -- LH*, SH
           i_byte_sel := b"0011";
           i_half     := rd_data_raw(15 downto 0);
@@ -1330,7 +1371,7 @@ begin
         end if;
         
       when b"01" =>                                     -- LB*, SB
-        d_addr     <= MM_result;
+        i_d_addr := MM_result;
         case MM_result(1 downto 0) is
           when b"00"  => i_byte_sel := b"0001";
                          i_byte     := rd_data_raw(7  downto  0);
@@ -1349,12 +1390,14 @@ begin
         -- MM_addr_error <= exNOP;
         
       when others =>
-        d_addr     <= "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";  -- MM_result;
+        i_d_addr   := "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";  -- MM_result;
         i_byte_sel := b"0000";
         bytes_read := (others => 'X');
         -- MM_addr_error <= exNOP;
 
     end case;
+
+    d_addr_pre <= i_d_addr;
 
     b_sel    <= i_byte_sel;
     rd_data  <= bytes_read;
@@ -1569,7 +1612,7 @@ begin
 
   -- ----------------------------------------------------------------------    
   PIPESTAGE_EXCP_RF_EX: reg_excp_RF_EX
-    port map (clk, rst, excp_RF_EX_ld, can_trap,EX_can_trap,
+    port map (clk, rst, excp_RF_EX_ld, can_trap,EX_can_trap, 
               exception,EX_exception, trap_instr,EX_trap_instr, 
               cop0_reg,EX_cop0_reg, cop0_sel,EX_cop0_sel,
               next_instr_in_delay_slot,EX_is_delayslot,
@@ -1582,14 +1625,18 @@ begin
 
   -- check for overflow in EX, send it to MM for later processing
   ex_trapped <= '1' when (EX_can_trap = b"10" and ovfl = '1') else '0';
+
   
   is_exception <= exOvfl when MM_ex_trapped = '1' else EX_exception;
+
+  
   
   COP0_DECODE_EXCEPTION_AND_UPDATE_STATUS:
-  process (rst, EX_a_rt, EX_PC, is_exception, EX_trap_instr,
+  process (EX_a_rt, is_exception, EX_trap_instr, EX_wreg,
            EX_cop0_reg, EX_cop0_sel, EX_nmi, EX_interrupt,EX_int_req,
            EX_is_delayslot, cop0_inp, EX_tr_is_equal, EX_tr_less_than,
-           COUNT, COMPARE, STATUS, CAUSE, EPC, BadVAddr,
+           INDEX, RANDOM, EntryLo0, EntryLo1, CONTEXT, PAGEMASK, WIRED,
+           EntryHi, COUNT, COMPARE, STATUS, CAUSE, EPC, BadVAddr,
            rom_stall,ram_stall)
     
     variable newSTATUS, i_COP0_rd : reg32;
@@ -1621,7 +1668,9 @@ begin
     ExcCode         <= cop0code_NULL;
     BadVAddr_source <= '0';
     BadVAddr_update <= '1';
+    EX_mfc0         <= '0';
 
+    newSTATUS             := STATUS;    -- preserve as needed
     newSTATUS(STATUS_BEV) := '0';  -- interrupts at offset 0x200
     newSTATUS(STATUS_CU3) := '0';  -- COP-3 absent (always)
     newSTATUS(STATUS_CU2) := '0';  -- COP-2 absent (always)
@@ -1695,6 +1744,7 @@ begin
         end case;
         i_a_c   := EX_a_rt;
         i_stall := '0';
+        EX_mfc0 <= '1';
 
       when exERET =>            -- exception return
         i_update     := '1';
@@ -1920,7 +1970,7 @@ begin
     if STATUS(STATUS_EXL) = '0' then
       newCAUSE(CAUSE_BD)   := EX_is_delayslot;  -- instr is in delay slot
     else
-      newCAUSE(CAUSE_BD)   := CAUSE(CAUSE_BD);
+      newCAUSE(CAUSE_BD)   := CAUSE(CAUSE_BD);  -- hold it in a double fault
     end if;
     newCAUSE(CAUSE_TI)     := count_eq_compare;
     newCAUSE(CAUSE_CE1)    := '0';
@@ -2054,19 +2104,31 @@ begin
   
   -- MMU-TLB ===========================================================
 
-  -- MMU Index -----------------------------------
+  -- MMU Index -- cop0_0 -------------------------
 
   index_update <= '0' when (update = '1' and update_reg = cop0reg_Index)
                   else not(tlb_probe);
+
+  hit_mm_bit <= '0' when (hit_mm = TRUE) else '1';
   
-  index_inp <= not(hit_mm) & MMU_IDX_0s & tlb_adr_mm when tlb_probe = '1' else 
-               '0' & MMU_IDX_0s & cop0_inp(MMU_CAPACITY_BITS-1 downto 0);
+  with hit_mm_adr select tlb_adr_mm <= "000" when 0,
+                                       "001" when 1,
+                                       "010" when 2,
+                                       "011" when 3,
+                                       "100" when 4,
+                                       "101" when 5,
+                                       "110" when 6,
+                                       "111" when 7,
+                                       "XXX" when others;
+  
+  index_inp  <= hit_mm_bit & MMU_IDX_0s & tlb_adr_mm when tlb_probe = '1' else 
+                hit_mm_bit & MMU_IDX_0s & cop0_inp(MMU_CAPACITY_BITS-1 downto 0);
 
   MMU_Index: register32 generic map(x"00000000")
     port map (clk, rst, index_update, index_inp, INDEX);
 
 
-  -- MMU Wired -----------------------------------
+  -- MMU Wired -- cop0_6 -- pg 72 ----------------
 
   wired_update <= '0' when (update = '1' and update_reg = cop0reg_Wired)
                   else '1';
@@ -2076,7 +2138,8 @@ begin
   MMU_Wired: register32 generic map(MMU_WIRED_INIT)
     port map (clk, rst, wired_update, wired_inp, WIRED);
 
-  -- MMU Random ----------------------------------
+  
+  -- MMU Random -- cop0_1 ------------------------
 
   MMU_Random: process(clk, rst, WIRED, wired_update)
     variable count : integer range -1 to MMU_CAPACITY-1;
@@ -2092,7 +2155,8 @@ begin
     RANDOM <= std_logic_vector(to_signed(count, 32));
   end process MMU_Random;
 
-  -- MMU EntryLo0 -- pg 63 ----------------------
+  
+  -- MMU EntryLo0 -- pg 63 -- cop0_2 ------------
 
   entryLo0_update <= '0' when (update = '1' and update_reg = cop0reg_EntryLo0)
                   else not(tlb_read);
@@ -2102,7 +2166,8 @@ begin
   MMU_EntryLo0: register32 generic map(x"00000000")
     port map (clk, rst, entryLo0_update, entryLo0_inp, EntryLo0);
 
-  -- MMU EntryLo1 -- pg 63 ----------------------  
+
+  -- MMU EntryLo1 -- pg 63 -- cop0_3 ------------  
   
   entryLo1_update <= '0' when (update = '1' and update_reg = cop0reg_EntryLo1)
                   else not(tlb_read);
@@ -2112,17 +2177,37 @@ begin
   MMU_EntryLo1: register32 generic map(x"00000000")
     port map (clk, rst, entryLo1_update, entryLo1_inp, EntryLo1);
 
-  -- MMU Context -- pg 67 ----------------------  
-  
-  context_update <= '0' when (update = '1' and update_reg = cop0reg_Context)
-                  else '1';
-  
-  context_inp <= cop0_inp when tlb_read = '0' else tlb_context_mm;
-  
-  MMU_Context: register32 generic map(x"00000000")
-    port map (clk, rst, context_update, context_inp, Context);
 
-  -- MMU Pagemask -----------------------------  
+  -- MMU Context -- pg 67 -- cop0_4 ------------
+
+  context_upd_pte <= '0' when (update = '1' and update_reg = cop0reg_Context)
+                     else '1';
+
+  context_upd_bad <= '0' when (not(hit_mm) or not(hit_pc)) else '1';
+
+  assert true                          -- DEBUG
+    report "pgSz " & integer'image(PAGE_SZ_BITS) &
+           " va-1 " & integer'image(VABITS-1) &
+           " pg+1 " & integer'image(PAGE_SZ_BITS+1) &
+           " add " & integer'image(VABITS-1 - PAGE_SZ_BITS+1) &
+           " lef " & integer'image( PC(VABITS-1 downto PAGE_SZ_BITS+1)'left )&
+           " rig " & integer'image( PC(VABITS-1 downto PAGE_SZ_BITS+1)'right );
+  
+  tlb_context_inp <= v_addr(VABITS-1 downto PAGE_SZ_BITS+1) when not(hit_mm) else
+                     PC(VABITS-1 downto PAGE_SZ_BITS+1) when not(hit_pc) else
+                     (others => 'X');
+  
+  MMU_ContextPTE: registerN generic map(9, b"000000000")
+    port map (clk, rst, context_upd_pte,
+              cop0_inp(31 downto 23), Context(31 downto 23));
+  
+  MMU_ContextBAD: registerN generic map(19, b"0000000000000000000")
+    port map (clk, rst, context_upd_bad, tlb_context_inp, Context(22 downto 4));
+
+  Context(3 downto 0) <= b"0000";
+
+  
+  -- MMU Pagemask -- cop0_5 -- pg 68 ----------- 
   -- page size is fixed = 4k, thus PageMask is not register
   
   -- pageMask_update <= '0' when (update='1' and update_reg=cop0reg_PageMask)
@@ -2133,9 +2218,10 @@ begin
   -- MMU_PageMask: register32 generic map(x"00000000")
   --  port map (clk, rst, pageMask_update, pageMask_inp, PageMask);
 
-  PageMask <= x"00001800";              -- pg 68
+  PageMask <= mmu_PageMask;
 
-  -- MMU EntryHi -- pg 76 ----------------------  
+  
+  -- MMU EntryHi -- pg 76 -- cop0_10 -----------  
   -- EntryHi holds the ASID of the current process, to check for a match
   
   entryHi_update <= '0' when (update = '1' and update_reg = cop0reg_EntryHi)
@@ -2146,27 +2232,91 @@ begin
   MMU_EntryHi: register32 generic map(x"00000000")
     port map (clk, rst, entryHi_update, entryHi_inp, EntryHi);
 
-  
-  -- MMU TLB DATA array ------------------------
 
-  -- TLB_tag: 31..10 = VPN, 9 = 0, 8 = G, 7..0 = ASID
-  -- TLB_dat: 27..6 = PPN, 5..3 = C, 2 = D, 1 = V, 0 = G
+  MMU_exceptions: process(EX_mem_t, EX_wrmem, hit_mm, hit_pc,  -- pg 41 --
+                          hit_mm_v, hit_mm_d, hit_pc_v, STATUS)
+    variable i_exception : exception_type;
+  begin
+
+    -- check for InstructionFetches; if something happens in MM, that
+    --   takes priority over IF (i_exception is overwritten later)
+    
+    -- now check for events later in the pipeline: LOADS and STORES
+    
+    if EX_mem_t /= b"0000" then
+
+      if hit_mm = FALSE then     -- miss, check for TLBrefill or TLBdoubleFault
+
+        if STATUS(STATUS_EXL) = '1' then
+          i_exception := exTLBdblFault;
+        else
+          i_exception := exTLBrefill;
+        end if;
+
+      elsif hit_mm_v = '0' then  -- hit; check for TLBinvalid
+        
+        i_exception := exTLBinval;
+
+      elsif EX_wrmem = '0' and hit_mm_d = '0' then
+
+        i_exception := exTLBmod;
+
+      else
+
+        i_exception := exNOP;
+        
+      end if;
+        
+    elsif hit_pc = false then
+
+      if STATUS(STATUS_EXL) = '1' then
+        i_exception := exTLBdblFault;
+      else
+        i_exception := exTLBrefill;
+      end if;
+
+    elsif hit_pc_v = '0' then  -- hit; check for TLBinvalid
+        
+      i_exception := exTLBinval;
+
+    else
+
+      i_exception := exNOP;        
+        
+    end if;
+
+    MM_excp_TLB <= i_exception;
+
+  end process MMU_exceptions; -- -----------------------------------------
+
+
   
-  MMU_CONTROL: process(rst, clk, EX_exception, hit_mm, tlb_adr_mm,
-                          INDEX, RANDOM, EntryHi, EntryLo0, -- EntryLo1,
-                          tlb_tag0, tlb_tag1, tlb_tag2, tlb_tag3)
-    variable e_hi : reg32;
-    variable e_lo : reg28;
+  
+  -- MMU TLB TAG-DATA array -- pg 17 ------------------------------------
+
+  -- TLB_tag: 31..13 = VPN, 12..9 = 0, 8 = G, 7..0 = ASID
+  -- TLB_dat: 29..6 = PPN, 5..3 = C, 2 = D, 1 = V, 0 = G
+  
+  MMU_CONTROL: process(EX_exception, INDEX, RANDOM)
+    variable i_tlb_adr : integer range MMU_CAPACITY-1 downto 0;
   begin
 
     tlb_tag0_updt <= '1';
     tlb_tag1_updt <= '1';
     tlb_tag2_updt <= '1';
     tlb_tag3_updt <= '1';
+    tlb_tag4_updt <= '1';
+    tlb_tag5_updt <= '1';
+    tlb_tag6_updt <= '1';
+    tlb_tag7_updt <= '1';
     tlb_dat0_updt <= '1';
     tlb_dat1_updt <= '1';
     tlb_dat2_updt <= '1';
     tlb_dat3_updt <= '1';
+    tlb_dat4_updt <= '1';
+    tlb_dat5_updt <= '1';
+    tlb_dat6_updt <= '1';
+    tlb_dat7_updt <= '1';
     tlb_read      <= '0';
     tlb_probe     <= '0';
 
@@ -2177,57 +2327,28 @@ begin
 
       when exTLBR => 
 
-        tlb_read <= '1';
-        tlb_adr  <= to_integer(unsigned(INDEX));
- 
-        case tlb_adr is
-          when 0 => e_hi := tlb_tag0; e_lo := tlb_dat0;
-          when 1 => e_hi := tlb_tag1; e_lo := tlb_dat1;
-          when 2 => e_hi := tlb_tag2; e_lo := tlb_dat2;
-          when 3 => e_hi := tlb_tag3; e_lo := tlb_dat3;
-          when others => null;
-        end case;
-
-        -- assert false
-        -- report "e_hi="&SLV32HEX(e_hi)&" adr="&natural'image(tlb_adr);--DEBUG
-
-        tlb_entryLo0(31 downto ELO_AHI_BIT+1) <= (others => '0');
-        tlb_entryLo0(ELO_AHI_BIT downto ELO_ALO_BIT)
-          <= e_lo(DAT_AHI_BIT downto DAT_ALO_BIT);
-        tlb_entryLo0(ELO_CHI_BIT  downto ELO_CLO_BIT)
-          <= e_lo(DAT_CHI_BIT  downto DAT_CLO_BIT);
-        tlb_entryLo0(ELO_D_BIT) <= e_lo(DAT_D_BIT);
-        tlb_entryLo0(ELO_V_BIT) <= e_lo(DAT_V_BIT);
-        tlb_entryLo0(ELO_G_BIT) <= e_lo(DAT_G_BIT);
-
-        tlb_entryhi(EHI_AHI_BIT downto EHI_ALO_BIT)
-          <= e_hi(TAG_AHI_BIT downto TAG_ALO_BIT);
-        tlb_entryhi(EHI_ALO_BIT-1 downto EHI_ASIDHI_BIT+1) <= (others => '0');
-        tlb_entryhi(EHI_ASIDHI_BIT downto EHI_ASIDLO_BIT)
-          <= e_hi(TAG_ASIDHI_BIT downto TAG_ASIDLO_BIT);
+        tlb_read  <= '1';
+        i_tlb_adr := to_integer(unsigned(INDEX(MMU_CAPACITY-1 downto 0)));
 
       when exTLBWI | exTLBWR => 
 
-        e_hi := EntryHi;
-        e_hi(TAG_G_BIT) := EntryLo0(ELO_G_BIT);
-        e_hi(TAG_Z_BIT) := '0';
-        tlb_tag_inp <= e_hi;
-
-        e_lo := EntryLo0(ELO_AHI_BIT downto ELO_G_BIT);
-        tlb_dat_inp <= e_lo;
-
-        
         case EX_exception is
-          when exTLBWI => tlb_adr <= to_integer(unsigned(INDEX));
-          when exTLBWR => tlb_adr <= to_integer(unsigned(RANDOM));
+          when exTLBWI =>
+            i_tlb_adr := to_integer(unsigned(INDEX(MMU_CAPACITY-1 downto 0)));
+          when exTLBWR =>
+            i_tlb_adr := to_integer(unsigned(RANDOM));
           when others => null;
         end case;
 
-        case tlb_adr is
+        case i_tlb_adr is
           when 0 => tlb_tag0_updt <= '0'; tlb_dat0_updt <= '0';
           when 1 => tlb_tag1_updt <= '0'; tlb_dat1_updt <= '0';
           when 2 => tlb_tag2_updt <= '0'; tlb_dat2_updt <= '0';
           when 3 => tlb_tag3_updt <= '0'; tlb_dat3_updt <= '0';
+          when 4 => tlb_tag4_updt <= '0'; tlb_dat4_updt <= '0';
+          when 5 => tlb_tag5_updt <= '0'; tlb_dat5_updt <= '0';
+          when 6 => tlb_tag6_updt <= '0'; tlb_dat6_updt <= '0';
+          when 7 => tlb_tag7_updt <= '0'; tlb_dat7_updt <= '0';
           when others => null;
         end case;
           
@@ -2235,119 +2356,347 @@ begin
 
     end case;    
 
-  end process MMU_CONTROL;
+    tlb_adr <= i_tlb_adr;
+    
+  end process MMU_CONTROL;  ------------------------------------------------
+
+
+  with tlb_adr select
+    e_hi <= tlb_tag0 when 0,
+            tlb_tag1 when 1,
+            tlb_tag2 when 2,
+            tlb_tag3 when 3,
+            tlb_tag4 when 4,
+            tlb_tag5 when 5,
+            tlb_tag6 when 6,
+            tlb_tag7 when others;
+
+  with tlb_adr select
+    e_lo0 <= tlb_dat0_0 when 0,
+             tlb_dat1_0 when 1,
+             tlb_dat2_0 when 2,
+             tlb_dat3_0 when 3,
+             tlb_dat4_0 when 4,
+             tlb_dat5_0 when 5,
+             tlb_dat6_0 when 6,
+             tlb_dat7_0 when others;
+
+  with tlb_adr select
+    e_lo1 <= tlb_dat0_1 when 0,
+             tlb_dat1_1 when 1,
+             tlb_dat2_1 when 2,
+             tlb_dat3_1 when 3,
+             tlb_dat4_1 when 4,
+             tlb_dat5_1 when 5,
+             tlb_dat6_1 when 6,
+             tlb_dat7_1 when others;
+  
+  -- assert false
+  -- report "e_hi="&SLV32HEX(e_hi)&" adr="&natural'image(tlb_adr);--DEBUG
+  
+  -- tlb_entryhi(EHI_AHI_BIT downto EHI_ALO_BIT)
+  tlb_entryhi(31 downto PAGE_SZ_BITS + 1)
+    <= e_hi(TAG_AHI_BIT downto TAG_ALO_BIT);
+  tlb_entryhi(PAGE_SZ_BITS downto EHI_ASIDHI_BIT+1) <= (others => '0');
+  tlb_entryhi(EHI_ASIDHI_BIT downto EHI_ASIDLO_BIT)
+    <= e_hi(TAG_ASIDHI_BIT downto TAG_ASIDLO_BIT);
+
+  tlb_entryLo0(31 downto ELO_AHI_BIT+1) <= (others => '0');
+  tlb_entryLo0(ELO_AHI_BIT downto ELO_ALO_BIT)
+    <= e_lo0(DAT_AHI_BIT downto DAT_ALO_BIT);
+  tlb_entryLo0(ELO_CHI_BIT  downto ELO_CLO_BIT)
+    <= e_lo0(DAT_CHI_BIT  downto DAT_CLO_BIT);
+  tlb_entryLo0(ELO_D_BIT) <= e_lo0(DAT_D_BIT);
+  tlb_entryLo0(ELO_V_BIT) <= e_lo0(DAT_V_BIT);
+  tlb_entryLo0(ELO_G_BIT) <= e_lo0(DAT_G_BIT);
+  
+  tlb_entryLo1(31 downto ELO_AHI_BIT+1) <= (others => '0');
+  tlb_entryLo1(ELO_AHI_BIT downto ELO_ALO_BIT)
+    <= e_lo1(DAT_AHI_BIT downto DAT_ALO_BIT);
+  tlb_entryLo1(ELO_CHI_BIT  downto ELO_CLO_BIT)
+    <= e_lo1(DAT_CHI_BIT  downto DAT_CLO_BIT);
+  tlb_entryLo1(ELO_D_BIT) <= e_lo1(DAT_D_BIT);
+  tlb_entryLo1(ELO_V_BIT) <= e_lo1(DAT_V_BIT);
+  tlb_entryLo1(ELO_G_BIT) <= e_lo1(DAT_G_BIT);
+
+
+  e_hi_inp <= EntryHi;
+  e_hi_inp(TAG_G_BIT) <= EntryLo0(ELO_G_BIT) and EntryLo1(ELO_G_BIT);  -- pg64
+  e_hi_inp(TAG_Z_BIT) <= '0';
+
+  tlb_tag_inp <= e_hi_inp;
+
+  tlb_dat0_inp <= EntryLo0(ELO_AHI_BIT downto ELO_G_BIT);
+        
+  tlb_dat1_inp <= EntryLo1(ELO_AHI_BIT downto ELO_G_BIT);
+
 
   
-  -- MMU TLB TAG array -------------------------
+  -- MMU TLB TAG+DATA array -------------------------
 
-  mm <= entryHi(VABITS-1 downto PAGE_SZ_BITS) when tlb_probe = '1' else
-        MM_result(VABITS-1 downto PAGE_SZ_BITS);
+  mm <= entryHi(EHI_AHI_BIT downto EHI_ALO_BIT) when tlb_probe = '1' else
+        v_addr(VA_HI_BIT downto VA_LO_BIT);
 
-  MMU_TAG0: register32 generic map(x"00000000")
+
+  -- TLB entry 0 -- initialized to 1st page of ROM
+  
+  MMU_TAG0: register32 generic map(MMU_ini_tag_ROM0)
     port map (clk, rst, tlb_tag0_updt, tlb_tag_inp, tlb_tag0);
 
-  hit0_pc <= BOOL2SL(
-    tlb_tag0(VA_HI_BIT downto VA_LO_BIT) = PC(VA_HI_BIT downto VA_LO_BIT) AND
-    tlb_tag0(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0));
+  MMU_DAT0_0: registerN generic map(DAT_REG_BITS, MMU_ini_dat_ROM0)
+    port map (clk, rst, tlb_dat0_updt, tlb_dat0_inp, tlb_dat0_0);  -- d=1,v=1,g=1
+  MMU_DAT0_1: registerN generic map(DAT_REG_BITS, MMU_ini_dat_ROM1)
+    port map (clk, rst, tlb_dat0_updt, tlb_dat1_inp, tlb_dat0_1);  -- d=1,v=1,g=1
 
-  hit0_mm <= BOOL2SL(
-    tlb_tag0(VA_HI_BIT downto VA_LO_BIT) = mm(VA_HI_BIT downto VA_LO_BIT) AND
-    tlb_tag0(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0));
+  hit0_pc <= TRUE when (tlb_tag0(VA_HI_BIT downto VA_LO_BIT) = PC(VA_HI_BIT downto VA_LO_BIT)
+                        and ( (tlb_tag0(TAG_G_BIT) = '1') OR
+                              tlb_tag0(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0) ) )
+             else FALSE;
 
-  MMU_DAT0: register28 generic map(x"0000012")  -- PPN=0, v=1
-    port map (clk, rst, tlb_dat0_updt, tlb_dat_inp, tlb_dat0);
-  
-  
-  
-  MMU_TAG1: register32 generic map(x"00000400")
+  hit0_mm <= TRUE when (tlb_tag0(VA_HI_BIT downto VA_LO_BIT) = mm(VA_HI_BIT downto VA_LO_BIT)
+                        and ( (tlb_tag0(TAG_G_BIT) = '1') OR
+                              tlb_tag0(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0) ) )
+             else FALSE;
+
+
+  -- TLB entry 1 -- initialized to 1st page of ROM
+
+  MMU_TAG1: register32 generic map(MMU_ini_tag_ROM2)
     port map (clk, rst, tlb_tag1_updt, tlb_tag_inp, tlb_tag1);
 
-  hit1_pc <= BOOL2SL(
-    tlb_tag1(VA_HI_BIT downto VA_LO_BIT) = PC(VA_HI_BIT downto VA_LO_BIT) AND
-    tlb_tag1(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0));
+  MMU_DAT1_0: registerN generic map(DAT_REG_BITS, MMU_ini_dat_ROM2)  -- d=1,v=1,g=1
+    port map (clk, rst, tlb_dat1_updt, tlb_dat0_inp, tlb_dat1_0);
+  MMU_DAT1_1: registerN generic map(DAT_REG_BITS, MMU_ini_dat_ROM3)  -- d=1,v=1,g=1
+    port map (clk, rst, tlb_dat1_updt, tlb_dat1_inp, tlb_dat1_1);
 
-  hit1_mm <= BOOL2SL(
-    tlb_tag1(VA_HI_BIT downto VA_LO_BIT) = mm(VA_HI_BIT downto VA_LO_BIT) AND
-    tlb_tag1(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0));
+  hit1_pc <= TRUE when (tlb_tag1(VA_HI_BIT downto VA_LO_BIT) = PC(VA_HI_BIT downto VA_LO_BIT)
+                        and ( (tlb_tag1(TAG_G_BIT) = '1') OR
+                              tlb_tag1(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0) ) )
+             else FALSE;
 
-  MMU_DAT1: register28 generic map(x"0000052")  -- PPN=1, v=1
-    port map (clk, rst, tlb_dat1_updt, tlb_dat_inp, tlb_dat1);
+  hit1_mm <= TRUE when (tlb_tag1(VA_HI_BIT downto VA_LO_BIT) = mm(VA_HI_BIT downto VA_LO_BIT)
+                        and ( (tlb_tag1(TAG_G_BIT) = '1') OR
+                              tlb_tag1(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0) ) )
+             else FALSE;
+
 
   
-  MMU_TAG2: register32 generic map(x"00000800")
+  -- TLB entry 2 -- initialized to 3rd page of ROM
+  
+  MMU_TAG2: register32 generic map(MMU_ini_tag_ROM4)
     port map (clk, rst, tlb_tag2_updt, tlb_tag_inp, tlb_tag2);
 
-  hit2_pc <= BOOL2SL(
-    tlb_tag2(VA_HI_BIT downto VA_LO_BIT) = PC(VA_HI_BIT downto VA_LO_BIT) AND
-    tlb_tag2(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0));
+  MMU_DAT2_0: registerN generic map(DAT_REG_BITS, MMU_ini_dat_ROM4)  -- d=1,v=1,g=1
+    port map (clk, rst, tlb_dat2_updt, tlb_dat0_inp, tlb_dat2_0);
+  MMU_DAT2_1: registerN generic map(DAT_REG_BITS, MMU_ini_dat_ROM5)  -- d=1,v=1,g=1
+    port map (clk, rst, tlb_dat2_updt, tlb_dat1_inp, tlb_dat2_1);
 
-  hit2_mm <= BOOL2SL(
-    tlb_tag2(VA_HI_BIT downto VA_LO_BIT) = mm(VA_HI_BIT downto VA_LO_BIT) AND
-    tlb_tag2(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0));
-  
-  MMU_DAT2: register28 generic map(x"0000092")  -- PPN=2, v=1
-    port map (clk, rst, tlb_dat2_updt, tlb_dat_inp, tlb_dat2);
+  hit2_pc <= TRUE when (tlb_tag2(VA_HI_BIT downto VA_LO_BIT) = PC(VA_HI_BIT downto VA_LO_BIT)
+                        and ( (tlb_tag2(TAG_G_BIT) = '1') OR
+                              tlb_tag2(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0) ) )
+             else FALSE;
 
+  hit2_mm <= TRUE when (tlb_tag2(VA_HI_BIT downto VA_LO_BIT) = mm(VA_HI_BIT downto VA_LO_BIT)
+                        and ( (tlb_tag2(TAG_G_BIT) = '1') OR
+                              tlb_tag2(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0) ) )
+             else FALSE;
+
+
+
+  -- TLB entry 3 -- initialized to 4th page of ROM
   
-  MMU_TAG3: register32 generic map(x"00000c00")
+  MMU_TAG3: register32 generic map(MMU_ini_tag_ROM6)
     port map (clk, rst, tlb_tag3_updt, tlb_tag_inp, tlb_tag3);
 
-  hit3_pc <= BOOL2SL(
-    tlb_tag3(VA_HI_BIT downto VA_LO_BIT) = PC(VA_HI_BIT downto VA_LO_BIT) AND
-    tlb_tag3(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0));
+  MMU_DAT3_0: registerN generic map(DAT_REG_BITS, MMU_ini_dat_ROM6)  -- d=1,v=1,g=1
+    port map (clk, rst, tlb_dat3_updt, tlb_dat0_inp, tlb_dat3_0);
+  MMU_DAT3_1: registerN generic map(DAT_REG_BITS, MMU_ini_dat_ROM7)  -- d=1,v=1,g=1
+    port map (clk, rst, tlb_dat3_updt, tlb_dat1_inp, tlb_dat3_1);
 
-  hit3_mm <= BOOL2SL(
-    tlb_tag3(VA_HI_BIT downto VA_LO_BIT) = mm(VA_HI_BIT downto VA_LO_BIT) AND
-    tlb_tag3(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0));
+  hit3_pc <= TRUE when (tlb_tag3(VA_HI_BIT downto VA_LO_BIT) = PC(VA_HI_BIT downto VA_LO_BIT)
+                        and ( (tlb_tag3(TAG_G_BIT) = '1') OR
+                              tlb_tag3(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0) ) )
+             else FALSE;
 
-  MMU_DAT3: register28 generic map(x"00000d2")  -- PPN=3, v=1
-    port map (clk, rst, tlb_dat3_updt, tlb_dat_inp, tlb_dat3);
+  hit3_mm <= TRUE when (tlb_tag3(VA_HI_BIT downto VA_LO_BIT) = mm(VA_HI_BIT downto VA_LO_BIT)
+                        and ( (tlb_tag3(TAG_G_BIT) = '1') OR
+                              tlb_tag3(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0) ) )
+             else FALSE;
 
-  
-
-  tlb_a2_pc <= '0';
-  tlb_a1_pc <= hit2_pc or hit3_pc;
-  tlb_a0_pc <= hit1_pc or hit3_pc;
-
-  hit_pc     <= hit0_pc or hit1_pc or hit2_pc or hit3_pc;
-  tlb_adr_pc <= tlb_a1_pc & tlb_a0_pc;  -- tlb_a2_pc & 
-
-  tlb_ppn <= tlb_dat0(DAT_AHI_BIT downto DAT_ALO_BIT) when hit0_pc = '1'
-             else (others => 'Z');
-  tlb_ppn <= tlb_dat1(DAT_AHI_BIT downto DAT_ALO_BIT) when hit1_pc = '1'
-             else (others => 'Z');
-  tlb_ppn <= tlb_dat2(DAT_AHI_BIT downto DAT_ALO_BIT) when hit2_pc = '1'
-             else (others => 'Z');
-  tlb_ppn <= tlb_dat3(DAT_AHI_BIT downto DAT_ALO_BIT) when hit2_pc = '1'
-             else (others => 'Z');
 
   
---  with "00" select --  tlb_adr_pc select
---    tlb_ppn <= tlb_dat0(DAT_AHI_BIT downto DAT_ALO_BIT) when "00",
---                tlb_dat1(DAT_AHI_BIT downto DAT_ALO_BIT) when "01",
---                tlb_dat2(DAT_AHI_BIT downto DAT_ALO_BIT) when "10",
---                tlb_dat3(DAT_AHI_BIT downto DAT_ALO_BIT) when "11",
---                (others => 'X') when others;
+  -- TLB entry 4 -- initialized to 1st page of RAM
 
-  phy_i_addr <= tlb_ppn(21 downto 0) & PC(VA_LO_BIT-1 downto 0);
-  
-  assert false report LF& " dathi "&integer'image(DAT_AHI_BIT) &
-                          " datlo "&integer'image(DAT_ALO_BIT) &
-                          " valo " &integer'image(VA_LO_BIT) &
-                          " ppn_b "&integer'image(PPN_BITS) &
-                          " dathl "&integer'image(DAT_AHI_BIT - DAT_ALO_BIT) &
-    " ppn_bits " &integer'image(PPN_BITS)&
-    " 2bits " &integer'image(to_integer(signed(tlb_ppn(1 downto 0))))&
-    LF & " elohi "&integer'image(ELO_AHI_BIT)&
-    " elolo "&integer'image(ELO_ALO_BIT);
-  
-  
-  tlb_a2_mm <= '0';  
-  tlb_a1_mm <= hit2_mm or hit3_mm;
-  tlb_a0_mm <= hit1_mm or hit3_mm;
+  MMU_TAG4: register32 generic map(MMU_ini_tag_RAM0)
+    port map (clk, rst, tlb_tag4_updt, tlb_tag_inp, tlb_tag4);
 
-  hit_mm     <= hit0_mm or hit1_mm or hit2_mm or hit3_mm;
-  tlb_adr_mm <= tlb_a1_mm & tlb_a0_mm;  -- tlb_a2_mm & 
+  MMU_DAT4_0: registerN generic map(DAT_REG_BITS, MMU_ini_dat_RAM0)  -- d=1,v=1,g=1
+    port map (clk, rst, tlb_dat4_updt, tlb_dat0_inp, tlb_dat4_0);
+  MMU_DAT4_1: registerN generic map(DAT_REG_BITS, MMU_ini_dat_RAM1)  -- d=1,v=1,g=1
+    port map (clk, rst, tlb_dat4_updt, tlb_dat1_inp, tlb_dat4_1);
+
+  hit4_pc <= TRUE when (tlb_tag4(VA_HI_BIT downto VA_LO_BIT) = PC(VA_HI_BIT downto VA_LO_BIT)
+                        and ( (tlb_tag4(TAG_G_BIT) = '1') OR
+                              tlb_tag4(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0) ) )
+             else FALSE;
+
+  hit4_mm <= TRUE when (tlb_tag4(VA_HI_BIT downto VA_LO_BIT) = mm(VA_HI_BIT downto VA_LO_BIT)
+                        and ( (tlb_tag4(TAG_G_BIT) = '1') OR
+                              tlb_tag4(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0) ) )
+             else FALSE;
+
+
+  
+  -- TLB entry 5 -- initialized to 2nd page of RAM
+  
+  MMU_TAG5: register32 generic map(MMU_ini_tag_RAM2)
+    port map (clk, rst, tlb_tag5_updt, tlb_tag_inp, tlb_tag5);
+
+  MMU_DAT5_0: registerN generic map(DAT_REG_BITS, MMU_ini_dat_RAM2)  -- d=1,v=1,g=1
+    port map (clk, rst, tlb_dat5_updt, tlb_dat0_inp, tlb_dat5_0);
+  MMU_DAT5_1: registerN generic map(DAT_REG_BITS, MMU_ini_dat_RAM3)  -- d=1,v=1,g=1
+    port map (clk, rst, tlb_dat5_updt, tlb_dat1_inp, tlb_dat5_1);
+
+  hit5_pc <= TRUE when (tlb_tag5(VA_HI_BIT downto VA_LO_BIT) = PC(VA_HI_BIT downto VA_LO_BIT)
+                        and ( (tlb_tag5(TAG_G_BIT) = '1') OR
+                              tlb_tag5(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0) ) )
+             else FALSE;
+
+  hit5_mm <= TRUE when (tlb_tag5(VA_HI_BIT downto VA_LO_BIT) = mm(VA_HI_BIT downto VA_LO_BIT)
+                        and ( (tlb_tag5(TAG_G_BIT) = '1') OR
+                              tlb_tag5(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0) ) )
+             else FALSE;
+
+
+
+  -- TLB entry 6 -- initialized to top of RAM =  stack
+  
+  MMU_TAG6: register32 generic map(MMU_ini_tag_RAM6)
+    port map (clk, rst, tlb_tag6_updt, tlb_tag_inp, tlb_tag6);
+
+  MMU_DAT6_0: registerN generic map(DAT_REG_BITS, MMU_ini_dat_RAM6)  -- d=1,v=1,g=1
+    port map (clk, rst, tlb_dat6_updt, tlb_dat1_inp, tlb_dat6_0);
+  MMU_DAT6_1: registerN generic map(DAT_REG_BITS, MMU_ini_dat_RAM7)  -- d=1,v=1,g=1
+    port map (clk, rst, tlb_dat6_updt, tlb_dat1_inp, tlb_dat6_1);
+
+  hit6_pc <= TRUE when (tlb_tag6(VA_HI_BIT downto VA_LO_BIT) = PC(VA_HI_BIT downto VA_LO_BIT)
+                        and ( (tlb_tag6(TAG_G_BIT) = '1') OR
+                              tlb_tag6(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0) ) )
+             else FALSE;
+
+  hit6_mm <= TRUE when (tlb_tag6(VA_HI_BIT downto VA_LO_BIT) = mm(VA_HI_BIT downto VA_LO_BIT)
+                        and ( (tlb_tag6(TAG_G_BIT) = '1') OR
+                              tlb_tag6(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0) ) )
+             else FALSE;
+
+
+  
+  -- TLB entry 7 -- initialized to I/O page
+  
+  MMU_TAG7: register32 generic map(MMU_ini_tag_IO)
+    port map (clk, rst, tlb_tag7_updt, tlb_tag_inp, tlb_tag7);
+
+  MMU_DAT7_0: registerN generic map(DAT_REG_BITS, MMU_ini_dat_IO0)  -- d=1,v=1,g=1
+    port map (clk, rst, tlb_dat7_updt, tlb_dat0_inp, tlb_dat7_0);
+  MMU_DAT7_1: registerN generic map(DAT_REG_BITS, MMU_ini_dat_IO1)  -- d=1,v=1,g=1
+    port map (clk, rst, tlb_dat7_updt, tlb_dat1_inp, tlb_dat7_1);
+
+  hit7_pc <= TRUE when (tlb_tag7(VA_HI_BIT downto VA_LO_BIT) = PC(VA_HI_BIT downto VA_LO_BIT)
+                       and ( (tlb_tag7(TAG_G_BIT) = '1') OR
+                             tlb_tag7(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0) ) )
+             else FALSE;
+
+  hit7_mm <= TRUE when (tlb_tag7(VA_HI_BIT downto VA_LO_BIT) = mm(VA_HI_BIT downto VA_LO_BIT)
+                    and ( (tlb_tag7(TAG_G_BIT) = '1') OR
+                          tlb_tag7(ASID_HI_BIT downto 0) = EntryHi(ASID_HI_BIT downto 0) ) )
+             else FALSE;
+
+  -- end of TLB TAG+DATA ARRAY ----------------------------------------
+
+  -- select mapping for IF
+  
+  tlb_a2_pc <= 4 when (hit4_pc or hit5_pc or hit6_pc or hit7_pc) else 0;
+  tlb_a1_pc <= 2 when (hit2_pc or hit3_pc or hit6_pc or hit7_pc) else 0;
+  tlb_a0_pc <= 1 when (hit1_pc or hit3_pc or hit5_pc or hit7_pc) else 0;
+  
+  hit_pc    <= hit0_pc or hit1_pc or hit2_pc or hit3_pc or
+               hit4_pc or hit5_pc or hit6_pc or hit7_pc;
+
+  hit_pc_adr <= (tlb_a2_pc + tlb_a1_pc + tlb_a0_pc);
+
+  with hit_pc_adr select
+    tlb_ppn_pc0 <= tlb_dat0_0 when 0,
+                   tlb_dat1_0 when 1,
+                   tlb_dat2_0 when 2,
+                   tlb_dat3_0 when 3,
+                   tlb_dat4_0 when 4,
+                   tlb_dat5_0 when 5,
+                   tlb_dat6_0 when 6,
+                   tlb_dat7_0 when others;
+
+  with hit_pc_adr select
+    tlb_ppn_pc1 <= tlb_dat0_1 when 0,
+                   tlb_dat1_1 when 1,
+                   tlb_dat2_1 when 2,
+                   tlb_dat3_1 when 3,
+                   tlb_dat4_1 when 4,
+                   tlb_dat5_1 when 5,
+                   tlb_dat6_1 when 6,
+                   tlb_dat7_1 when others;
+
+  tlb_ppn_pc <= tlb_ppn_pc0(DAT_AHI_BIT downto DAT_ALO_BIT)
+                     when PC(PAGE_SZ_BITS) = '0'
+                else tlb_ppn_pc1(DAT_AHI_BIT downto DAT_ALO_BIT);
+
+  hit_pc_v   <= tlb_ppn_pc0(DAT_V_BIT) when PC(PAGE_SZ_BITS) = '0' else
+                tlb_ppn_pc1(DAT_V_BIT);
+  
+  phy_i_addr <= tlb_ppn_pc(PPN_BITS-1 downto 0) & PC(PAGE_SZ_BITS-1 downto 0);
+
+
+  -- select mapping for MM
+
+  tlb_a2_mm <= 4 when (hit4_mm or hit5_mm or hit6_mm or hit7_mm) else 0;
+  tlb_a1_mm <= 2 when (hit2_mm or hit3_mm or hit6_mm or hit7_mm) else 0;
+  tlb_a0_mm <= 1 when (hit1_mm or hit3_mm or hit5_mm or hit7_mm) else 0;
+  
+  hit_mm    <= hit0_mm or hit1_mm or hit2_mm or hit3_mm or
+               hit4_mm or hit5_mm or hit6_mm or hit7_mm;
+
+  hit_mm_adr <= (tlb_a2_mm + tlb_a1_mm + tlb_a0_mm);
+  
+  with hit_mm_adr select
+    tlb_ppn_mm0 <= tlb_dat0_0 when 0,
+                   tlb_dat1_0 when 1,
+                   tlb_dat2_0 when 2,
+                   tlb_dat3_0 when 3,
+                   tlb_dat4_0 when 4,
+                   tlb_dat5_0 when 5,
+                   tlb_dat6_0 when 6,
+                   tlb_dat7_0 when others;
+
+  with hit_mm_adr select
+    tlb_ppn_mm1 <= tlb_dat0_1 when 0,
+                   tlb_dat1_1 when 1,
+                   tlb_dat2_1 when 2,
+                   tlb_dat3_1 when 3,
+                   tlb_dat4_1 when 4,
+                   tlb_dat5_1 when 5,
+                   tlb_dat6_1 when 6,
+                   tlb_dat7_1 when others;
+
+  tlb_ppn_mm <= tlb_ppn_mm0(DAT_AHI_BIT downto DAT_ALO_BIT) when MM_result(PAGE_SZ_BITS) = '0' else
+                tlb_ppn_mm1(DAT_AHI_BIT downto DAT_ALO_BIT);
+  
+  hit_mm_v   <= tlb_ppn_mm0(DAT_V_BIT) when PC(PAGE_SZ_BITS) = '0' else
+                tlb_ppn_mm1(DAT_V_BIT);
+
+  hit_mm_d   <= tlb_ppn_mm0(DAT_D_BIT) when PC(PAGE_SZ_BITS) = '0' else
+                tlb_ppn_mm1(DAT_D_BIT);
+
+  
+  phy_d_addr <= tlb_ppn_mm(PPN_BITS-1 downto 0) & d_addr_pre(PAGE_SZ_BITS-1 downto 0);
+
   
   -- MMU-TLB == end =======================================================
 
@@ -2358,7 +2707,7 @@ begin
               EX_excp_type,MM_excp_type_i, EX_PC,MM_PC,
               EX_LLbit,MM_LLbit,
               EX_cop0_a_c,MM_cop0_a_c, EX_cop0_val,MM_cop0_val,
-              EX_trapped, MM_ex_trapped);
+              EX_trapped, MM_ex_trapped, EX_mfc0,MM_mfc0);
 
     COP0_MM_EXCEPTIONS: process(MM_addr_error, MM_excp_type_i)
     begin

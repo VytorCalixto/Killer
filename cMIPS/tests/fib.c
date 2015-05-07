@@ -36,7 +36,7 @@ void myprint(unsigned int* buf, unsigned int n) {
 
   for(i=0; i<n; i++) {
 #ifdef cMIPS
-    *IO = buf[i];   // 0x001 001 002 003 005 008 00d 015 022 0x037 15.275ns
+    print(buf[i]);   // 0x001 001 002 003 005 008 00d 015 022 0x037 15.275ns
 #else
     printf("%03x ",buf[i]); // 0x001 001 002 003 005 008 00d 015 022 0x037
 #endif

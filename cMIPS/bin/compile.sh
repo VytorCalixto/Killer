@@ -131,8 +131,8 @@ if [ $synth = true ];
 then S="-D FOR_SYNTHESIS" ; 
 else S="-U FOR_SYNTHESIS" ; fi
 
-(mips-gcc -O${level} $warn -DcMIPS -mno-gpopt -I"${include}" -S ${src} $S\
-          -o ${asm}  ||  exit 1) && \
+(mips-gcc -O${level} $warn -DcMIPS -mno-gpopt -I"${include}" \
+          -S ${src} $S -o ${asm}  ||  exit 1) && \
 mips-gcc -O1 -DcMIPS -mno-gpopt -I"${include}" -S ${c_io}.c -o ${c_io}.s $S &&\
 mips-as -O1 -EL -mips32 -I "${include}" -o ${obj} ${asm} && \
 mips-as -O1 -EL -mips32 -I "${include}" -o ${c_start}.o ${c_start}.s && \

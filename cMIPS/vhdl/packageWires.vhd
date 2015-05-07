@@ -54,6 +54,7 @@ package p_WIRES is
   subtype reg18 is std_logic_vector(17 downto 0);
   subtype reg19 is std_logic_vector(18 downto 0);
   subtype reg20 is std_logic_vector(19 downto 0);
+  subtype reg21 is std_logic_vector(20 downto 0);
   subtype reg24 is std_logic_vector(23 downto 0);
   subtype reg28 is std_logic_vector(27 downto 0);
   subtype reg30 is std_logic_vector(29 downto 0);
@@ -63,17 +64,15 @@ package p_WIRES is
   subtype reg64 is std_logic_vector(63 downto 0);  
 
   constant CLOCK_PER   : time := 20 ns;
-  constant REG_LATENCY : time := 0 ns;
-  constant ALU_LATENCY : time := 0 ns;
 
   -- DO NOT change (textual) format of these four lines
   constant NUM_MAX_W_STS  : integer := 1;
   constant ROM_WAIT_STATES: integer := 0;  -- num additional wait states
   constant RAM_WAIT_STATES: integer := 0;  -- num additional wait states
-  -- constant IO_WAIT_STATES : integer := 0;  -- num additional wait states
+  constant IO_WAIT_STATES : integer := 0;  -- num additional wait states
 
+  
   subtype  max_wait_states is integer range 0 to NUM_MAX_W_STS;
-
 
   type t_alu_fun is (opNOP,
                      opSLL, opSLLV, opSRL, opSRA, opSRLV, opSRAV,
@@ -175,7 +174,11 @@ package p_WIRES is
   function SLV32HEX(w: in std_logic_vector(31 downto 0)) return string;
   function BOOL2SL(b: in boolean) return std_logic;
   function SLV2ASCII(s: std_logic_vector(7 downto 0)) return character;
-
+  function SH_LEFT (inp: std_logic_vector; num_bits: integer) 
+    return std_logic_vector;
+  function SH_RIGHT(inp : std_logic_vector; num_bits : integer) 
+    return std_logic_vector;
+  
 end p_WIRES;
 
 
@@ -193,7 +196,29 @@ package body p_WIRES is
     end if;
   end;
   -- ---------------------------------------------------------  
-   
+
+
+  -- ---------------------------------------------------------
+  -- shift LEFT a std_logic_vector by num_bits positions
+  function SH_LEFT(inp : std_logic_vector; num_bits : integer) 
+    return std_logic_vector is
+    constant zeros : std_logic_vector(num_bits-1 downto 0) := (others => '0');
+  begin
+    return inp(inp'high-num_bits downto inp'low) & zeros;
+  end function;
+  -- ---------------------------------------------------------
+
+  -- ---------------------------------------------------------
+  -- shift RIGHT a std_logic_vector by num_bits positions
+  function SH_RIGHT(inp : std_logic_vector; num_bits : integer) 
+    return std_logic_vector is
+    constant zeros : std_logic_vector(num_bits-1 downto 0) := (others => '0');
+  begin
+    return zeros & inp(inp'high downto inp'low+num_bits);
+  end function;
+  -- ---------------------------------------------------------
+  
+  
   -- --------------------------------------------------------- 
   -- convert boolean to std_logic
   function CONVERT_BOOLEAN(b: in boolean) return std_logic is

@@ -28,8 +28,8 @@ package p_EXCEPTION is
                           exEI,exDI,    -- 5
                           exBREAK, exTRAP, exSYSCALL,  -- 8
                           exRESV_INSTR, exWAIT,  -- 10
-                          IFaddressError, MMaddressErrorLD, MMaddressErrorST,
-                          exTLBrefill, exTLBld, exTLBst, exTLBmod,  -- 17
+                          IFaddressError, MMaddressErrorLD, MMaddressErrorST, --13
+                          exTLBrefill, exTLBdblFault, exTLBinval, exTLBmod, -- 17
                           exOvfl,       -- 18
                           exLL,exSC,    -- 19,20  these are handled by COP0
                           exEHB,        -- 21

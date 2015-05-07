@@ -62,8 +62,8 @@ int main(void) { // receive a string through the UART serial interface
   ctrl.ign2  = 0;
   ctrl.intTX = 0;
   ctrl.intRX = 0;
-  ctrl.speed = 0;
-  uart->cs.ctl = ctrl;  // operate at highest data rate
+  ctrl.speed = 1;   // operate at the second highest data rate
+  uart->cs.ctl = ctrl;
 
   i = -1;
 

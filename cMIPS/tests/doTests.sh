@@ -37,12 +37,12 @@ usage:  $0 [options]
 OPTIONS:
    -h    Show this message
    -B    ignore blank space in comparing simulation to expected results
-   -c    simulate also programs that are timing-dependent -- use fake-caches
+   -c    simulate only programs that are timing independent: can use caches
 EOF
 }
 
 ignBLANKS=""
-withCache=true
+withCache=false
 
 while true ; do
 
@@ -51,7 +51,7 @@ while true ; do
             ;;
         -B) ignBLANKS="-B"
             ;;
-        -c) withCache=false
+        -c) withCache=true
             ;;
         "") break
             ;;
@@ -72,6 +72,7 @@ a_BHW="lbsb lhsh lwsw lwswIncr swlw lwl_lwr"
 a_MEM="lwSweepRAM"
 a_CTR="teq_tne tlt_tlti tltu_tgeu eiDI ll_sc overflow"
 a_COP="mtc0CAUSE2 mtc0EPC syscall break mfc0CONFIG badVAddr badVAddrMM"
+a_MMU="mmu_index mmu_tlbwi mmu_tlbp mmu_tlbwr"
 
 ## these tests MUST be run with FAKE CACHES
 # a_IOs="kbd7seg" 
@@ -86,7 +87,7 @@ rm -f *.simout *.elf
 stoptime=20ms
 
 if [ 0 = 0 ] ; then
-    for F in $(echo $a_FWD $a_CAC $a_BEQ $a_FUN $a_OTH $a_BHW $a_MEM $a_CTR $a_COP $a_IOs);
+    for F in $(echo $a_FWD $a_CAC $a_BEQ $a_FUN $a_OTH $a_BHW $a_MEM $a_CTR $a_COP $a_MMU $a_IOs);
     do
 	$bin/assemble.sh ${F}.s
 	${simulator} --ieee-asserts=disable --stop-time=$stoptime \
@@ -105,7 +106,7 @@ fi
 
 
 c_small="divmul fat fib sieve ccitt16 gcd matrix negcnt reduz rand"
-c_types="memcpy xram sort-byte sort-half sort-int"
+c_types="xram sort-byte sort-half sort-int memcpy"
 c_sorts="bubble insertion merge quick selection shell"
 
 ## the tests below MUST be run with FAKE CACHES
@@ -125,14 +126,14 @@ else
   SIMULATE="$c_small $c_types $c_sorts $c_timing $c_uart"
   echo -e "abcdef\n012345\n" >serial.inp
   # make sure all memory latencies are ZERO
-  pack=$srcVHDL/packageWires.vhd
-  sed -i -e "/ROM_WAIT_STATES/s/ := \([0-9][0-9]*\);/ := 0;/" \
-         -e "/RAM_WAIT_STATES/s/ := \([0-9][0-9]*\);/ := 0;/" \
-         -e "/IO_WAIT_STATES/s/ := \([0-9][0-9]*\);/ := 0;/" $pack
+  # pack=$srcVHDL/packageWires.vhd
+  # sed -i -e "/ROM_WAIT_STATES/s/ := \([0-9][0-9]*\);/ := 0;/" \
+  #        -e "/RAM_WAIT_STATES/s/ := \([0-9][0-9]*\);/ := 0;/" \
+  #        -e "/IO_WAIT_STATES/s/ := \([0-9][0-9]*\);/ := 0;/" $pack
 fi
 
 for F in $(echo "$SIMULATE" ) ; do 
-    $bin/compile.sh -O2 ${F}.c
+    $bin/compile.sh -O 3 ${F}.c
     ${simulator} --ieee-asserts=disable --stop-time=$stoptime \
           2>/dev/null >$F.simout
     diff $ignBLANKS -q $F.expected $F.simout

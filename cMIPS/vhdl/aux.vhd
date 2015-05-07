@@ -52,51 +52,17 @@ end functional;
 
 
 -- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
--- 28-bit register, synchronous load active in '0' (used only in TLB)
--- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-library IEEE;
-use IEEE.std_logic_1164.all;
-use work.p_WIRES.all;
-
-entity register28 is
-  generic (INITIAL_VALUE: reg28 := x"0000000");
-  port(clk, rst, ld: in  std_logic;
-        D:           in  reg28;
-        Q:           out reg28);
-end register28;
-
-architecture functional of register28 is
-begin
-  process(clk, rst, ld)
-    variable state: reg28;
-  begin
-    if rst = '0' then
-      state := INITIAL_VALUE;
-    elsif rising_edge(clk) then
-      if ld = '0' then
-        state := D;
-      end if;
-    end if;
-    Q <= state;
-  end process;
-  
-end functional;
--- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-
-
--- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 -- N-bit register, synchronous load active in '0', asynch reset
 -- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 library IEEE;
 use IEEE.std_logic_1164.all;
 use work.p_WIRES.all;
 entity registerN is
-  generic (NUM_BITS: integer := 16);
+  generic (NUM_BITS: integer := 16;
+           INIT_VAL: std_logic_vector);
   port(clk, rst, ld: in  std_logic;
        D:            in  std_logic_vector(NUM_BITS-1 downto 0);
        Q:            out std_logic_vector(NUM_BITS-1 downto 0));
-  constant INIT_VAL: std_logic_vector(NUM_BITS-1 downto 0) := (others => '0');
 end registerN;
 
 architecture functional of registerN is
