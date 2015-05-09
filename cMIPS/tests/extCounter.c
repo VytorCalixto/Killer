@@ -30,7 +30,7 @@ void main(void) {
       if ( (new=readCounter()) > old) {
 	increased = increased & TRUE;
 	old = new;
-	// print(new);             // print current count
+	// print(new);          // print current count, not for automated tests
       } else {
 	increased = FALSE;
       }

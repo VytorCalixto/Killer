@@ -53,6 +53,8 @@ architecture rtl of core is
     port(clk, rst, ld: in  std_logic;
          IF_excp_type: in  exception_type;
          RF_excp_type: out exception_type;
+         PC_abort:     in  boolean;
+         RF_PC_abort:  out  boolean;
          IF_PC:        in  std_logic_vector;
          RF_PC:        out std_logic_vector);
   end component reg_excp_IF_RF;
@@ -71,6 +73,8 @@ architecture rtl of core is
          EX_cop0_sel:     out std_logic_vector;
          RF_is_delayslot: in  std_logic;
          EX_is_delayslot: out std_logic;
+         RF_PC_abort:     in  boolean;
+         EX_PC_abort:     out  boolean;
          RF_PC:           in  std_logic_vector;
          EX_PC:           out std_logic_vector;
          RF_nmi:          in  std_logic;
@@ -95,6 +99,8 @@ architecture rtl of core is
          MM_PC:         out std_logic_vector;
          EX_cop0_LLbit: in  std_logic;
          MM_cop0_LLbit: out std_logic;
+         addrError:     in  boolean;
+         MM_abort:      out boolean;
          EX_cop0_a_c:   in  std_logic_vector;
          MM_cop0_a_c:   out std_logic_vector;
          EX_cop0_val:   in  std_logic_vector;
@@ -115,8 +121,8 @@ architecture rtl of core is
          WB_PC:         out std_logic_vector;
          MM_cop0_LLbit: in  std_logic;
          WB_cop0_LLbit: out std_logic;
-         MM_abort:      in  std_logic;
-         WB_abort:      out std_logic;
+         MM_abort:      in  boolean;
+         WB_abort:      out boolean;
          MM_cop0_a_c:   in  std_logic_vector;
          WB_cop0_a_c:   out std_logic_vector;
          MM_cop0_val:   in  std_logic_vector;
@@ -127,9 +133,11 @@ architecture rtl of core is
  
   signal interrupt,EX_interrupt, exception_stall : std_logic;
   signal exception_taken, interrupt_taken, trap_taken : std_logic;
-  signal nullify, nullify_EX, abort, MM_abort,WB_abort : std_logic;
+  signal nullify, nullify_EX, abort : std_logic;
+  signal addrError, MM_abort, WB_abort : boolean;
+  signal PC_abort, RF_PC_abort, EX_PC_abort : boolean;
   signal IF_excp_type,RF_excp_type,EX_excp_type,WB_excp_type: exception_type := exNOP;
-  signal MM_excp_type, MM_excp_type_i, MM_addr_error, MM_excp_TLB : exception_type;
+  signal MM_excp_type, MM_excp_type_i, TLB_excp_type : exception_type;
   signal trap_instr,EX_trap_instr: instr_type;
   signal RF_PC,EX_PC,MM_PC,WB_PC, LLaddr: reg32;
   signal EX_LLbit,MM_LLbit,WB_LLbit: std_logic;
@@ -158,7 +166,7 @@ architecture rtl of core is
   signal cop0_inp, RF_cop0_val,EX_cop0_val,MM_cop0_val,WB_cop0_val : reg32;
   signal EX_cop0_a_c,MM_cop0_a_c,WB_cop0_a_c : reg5;
   signal BadVAddr, BadVAddr_inp : reg32;
-  signal BadVAddr_update, BadVAddr_source : std_logic;
+  signal BadVAddr_update : std_logic;
 
   -- MMU signals --
   signal INDEX, index_inp, RANDOM, WIRED, wired_inp : reg32;
@@ -177,10 +185,11 @@ architecture rtl of core is
   signal hit4_pc, hit5_pc, hit6_pc, hit7_pc : boolean;
   signal hit0_mm, hit1_mm, hit2_mm, hit3_mm, hit_mm : boolean;
   signal hit4_mm, hit5_mm, hit6_mm, hit7_mm : boolean;
+  signal tlb_miss, tlb_miss_IF, tlb_miss_MM, tlb_exception : boolean;
   signal hit_mm_v, hit_mm_d, hit_pc_v : std_logic;
   signal tlb_adr_mm : MMU_idx_bits;
   signal tlb_probe, probe_hit, hit_mm_bit : std_logic;
-  signal mm : std_logic_vector(VA_HI_BIT downto VA_LO_BIT);
+  signal mm, tlb_excp_VA : std_logic_vector(VA_HI_BIT downto VA_LO_BIT);
   signal tlb_adr,tlb_a0_pc,tlb_a1_pc,tlb_a2_pc : natural range 0 to (MMU_CAPACITY-1);
   signal hit_pc_adr, hit_mm_adr : natural range 0 to (MMU_CAPACITY-1);
   signal tlb_a0_mm,tlb_a1_mm,tlb_a2_mm : natural range 0 to (MMU_CAPACITY-1);
@@ -700,7 +709,7 @@ begin
   stalled <= ram_stall or rom_stall;
   not_stalled <= not(stalled);
 
--- end INSTR_FETCH_STATE_MACHINE --------------------------
+  -- end INSTR_FETCH_STATE_MACHINE --------------------------
   
  
   -- PROGRAM COUNTER AND INSTRUCTION FETCH ------------------
@@ -748,7 +757,9 @@ begin
 
   IF_excp_type <= IFaddressError when PC(1 downto 0) /= b"00" else
                   exNOP;
-    
+
+  PC_abort <= PC(1 downto 0) /= b"00";
+  
   PIPESTAGE_PC: register32 generic map (x_INST_BASE_ADDR)
     port map (clk, rst, PCload, PCinp, PC);
 
@@ -765,7 +776,7 @@ begin
   -- uncomment this when making use of the TLB
   -- i_addr <= phy_i_addr;
   
-  abort <= MM_abort or WB_abort;
+  abort <= '1' when addrError else '0';
   
   instr_fetched <= instr when (nullify = '0' and abort = '0'
                                and PC(1 downto 0) = b"00") else
@@ -1019,8 +1030,8 @@ begin
   
   
   RF_DECODE_FUNCT: process (opcode,IF_RF_ld,ctrl_word,funct_word,rimm_word,
-                            func,shamt, a_rs,a_rd, STATUS, MM_abort,
-                            IF_excp_type,RF_excp_type,MM_excp_type)
+                            func,shamt, a_rs,a_rd, STATUS, addrError,
+                            RF_excp_type,MM_excp_type)
     variable i_wreg : std_logic;
     variable i_csel : reg2;
     variable i_oper : t_alu_fun := opNOP;
@@ -1142,11 +1153,11 @@ begin
           when b"110000" => i_exception := exLL;  -- not REALLY exceptions
           when b"111000" => i_exception := exSC;
           when b"111111" =>
-            if MM_abort = '1' then
-              i_exception := MM_excp_type;
-            else
-              i_exception := RF_excp_type;      -- delayed by pipe
-            end if;
+         --    if addrError then
+         --      i_exception := MM_excp_type;
+         --    else
+         --      i_exception := RF_excp_type;      -- delayed by pipe
+         --    end if;
           when others    => null; -- i_exception := exRESV_INSTR;
         end case;
         i_wreg := ctrl_word.wreg;
@@ -1262,8 +1273,7 @@ begin
                       alu_move_ok, EX_oper,EX_postn,EX_shamt, ovfl);
 
   EX_wreg <= EX_wreg_pre                -- movz,movn, move/DO_NOT move
-             or nullify_EX              -- abort wr if prev excep in EX
-             or abort;                  -- abort write if exception in MEM
+             or nullify_EX;              -- abort wr if prev excep in EX
 
   EX_wrmem_cond <= EX_wrmem
                    or nullify_EX        -- abort write if exception in EX
@@ -1276,10 +1286,58 @@ begin
 
 
   -- this adder performs address calculation so the TLB can be checked during
-  --   EX and signal any exception as early as possible
+  --   EX so we may signal an exception as early as possible
   U_VIR_ADDR_ADD: mf_alt_adder port map (alu_inp_A, EX_displ32, v_addr);
   
 
+  U_EX_ADDR_ERR_EXCP: process(EX_mem_t,EX_aVal,EX_wrmem, v_addr)
+  begin
+
+    case EX_mem_t(1 downto 0) is  -- xx,by,hf,wd
+      when b"11" =>
+        if ( EX_mem_t(3) = '0' and         -- normal LOAD, not LWL,LWR
+             EX_aVal = '0' and v_addr(1 downto 0) /= b"00" ) then
+          if EX_wrmem = '1' then
+            MM_excp_type <= MMaddressErrorLD;
+          else
+            MM_excp_type <= MMaddressErrorST;
+          end if;
+          addrError <= TRUE;
+        else
+          MM_excp_type <= exNOP;
+          addrError     <= FALSE;
+        end if;
+
+      when b"10" =>                        -- LH*, SH
+        if EX_aVal = '0' and v_addr(0) /= '0' then
+          if EX_wrmem = '1' then
+            MM_excp_type <= MMaddressErrorLD;
+          else
+            MM_excp_type <= MMaddressErrorST;
+          end if;
+          addrError       <= TRUE;
+        else
+          MM_excp_type <= exNOP;
+          addrError     <= FALSE;
+        end if;
+        
+      when others =>                      -- LB*, SB
+        MM_excp_type <= exNOP;
+        addrError     <= FALSE;
+                     
+    end case;
+    
+    -- assert MM_excp_type = exNOP  -- DEBUG
+    --   report "SIMULATION ERROR -- data addressing error: " &
+    --   integer'image(exception_type'pos(MM_excp_type)) &
+    --   " at address: " & SLV32HEX(v_addr)
+    --   severity error;
+
+  end process U_EX_ADDR_ERR_EXCP; ----------------------------------
+
+
+
+  
   
   -- ----------------------------------------------------------------------
   PIPESTAGE_EX_MM: reg_EX_MM
@@ -1305,7 +1363,7 @@ begin
   ram_stall <= not(daVal) and not(d_wait);
   -- end DATA_BUS_STATE_MACHINE -------------------------------------
  
-  wr <= MM_wrmem or abort;
+  wr <= MM_wrmem;
   
   rd_data_raw <= data_inp when (MM_wrmem = '1' and MM_aVal = '0') else
                  (others => 'X');
@@ -1326,25 +1384,12 @@ begin
     constant c_16_zeros : reg16 := b"0000000000000000";
   begin
 
-    MM_addr_error <= exNOP;
-
     case MM_mem_t(1 downto 0) is  -- 10:xx,by,hf,wd
       when b"11" =>
         i_byte_sel := b"1111";              -- LW, SW, LWL, LWR
         bytes_read := rd_data_raw;
         i_d_addr   := MM_result(31 downto 2) & b"00";   -- align reference
         
-        if ( MM_mem_t(3) = '0' and          -- normal LOAD, not LWL,LWR
-             MM_aVal = '0' and MM_result(1 downto 0) /= b"00" ) then
-          if MM_wrmem = '1' then
-            MM_addr_error <= MMaddressErrorLD;
-          else
-            MM_addr_error <= MMaddressErrorST;
-          end if;
-        -- else
-        --   MM_addr_error <= exNOP;
-        end if;
-
       when b"10" =>
         i_d_addr     := MM_result(31 downto 1) & '0' ;    -- align reference
         if MM_result(1) = '0' then                      -- LH*, SH
@@ -1360,16 +1405,6 @@ begin
           bytes_read := c_16_zeros & i_half;
         end if;
 
-        if MM_aVal = '0' and MM_result(0) /= '0' then
-          if MM_wrmem = '1' then
-            MM_addr_error <= MMaddressErrorLD;
-          else
-            MM_addr_error <= MMaddressErrorST;
-          end if;
-        -- else
-        --   MM_addr_error <= exNOP;
-        end if;
-        
       when b"01" =>                                     -- LB*, SB
         i_d_addr := MM_result;
         case MM_result(1 downto 0) is
@@ -1387,13 +1422,11 @@ begin
         else
           bytes_read := c_24_zeros & i_byte;
         end if;
-        -- MM_addr_error <= exNOP;
         
       when others =>
         i_d_addr   := "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";  -- MM_result;
         i_byte_sel := b"0000";
         bytes_read := (others => 'X');
-        -- MM_addr_error <= exNOP;
 
     end case;
 
@@ -1402,13 +1435,7 @@ begin
     b_sel    <= i_byte_sel;
     rd_data  <= bytes_read;
 
-    -- assert MM_addr_error = exNOP  -- DEBUG
-    --   report "SIMULATION ERROR -- data addressing error: " &
-    --   integer'image(exception_type'pos(MM_addr_error)) &
-    --   " at address: " & SLV32HEX(MM_result)
-    --   severity error;
-
-  end process MM_MEM_INTERFACE;
+  end process MM_MEM_INTERFACE; ---------------------------------
 
   -- forwarding for LW -> SW 
   MM_FORWARDING_MEM: process (MM_aVal,MM_wrmem,MM_a_rt,WB_a_c,WB_wreg,WB_C,MM_B)
@@ -1430,7 +1457,7 @@ begin
     end if;
     fwd_mem  <= f_m;                    -- for debugging
     data_out <= i_data;
-  end process MM_FORWARDING_MEM;
+  end process MM_FORWARDING_MEM; -------------------------------
 
 
   -- forwarding for LWL, LWR
@@ -1452,9 +1479,9 @@ begin
   end process MM_FWD_LWLR;
 
   
-  MM_wreg_cond <= '1' when ((ram_stall = '1')
-                            or (abort = '1')    -- abort write if excptn in MEM
-                            or (MM_move = '1' and MM_alu_move_ok = '0'))
+  MM_wreg_cond <= '1' when ( (ram_stall = '1')
+                             or MM_abort     -- abort regWrite if excptn in MEM
+                             or (MM_move = '1' and MM_alu_move_ok = '0') )
                   else MM_wreg;
 
 
@@ -1535,7 +1562,7 @@ begin
   
   PIPESTAGE_EXCP_IF_RF: reg_excp_IF_RF
     port map (clk, rst, excp_IF_RF_ld,
-              IF_excp_type,RF_excp_type, PC,RF_PC);
+              IF_excp_type,RF_excp_type, PC_abort,RF_PC_abort, PC,RF_PC);
 
 
   -- RF decode & register fetch ---------------------------------------------
@@ -1616,7 +1643,7 @@ begin
               exception,EX_exception, trap_instr,EX_trap_instr, 
               cop0_reg,EX_cop0_reg, cop0_sel,EX_cop0_sel,
               next_instr_in_delay_slot,EX_is_delayslot,
-              RF_PC,EX_PC, RF_nmi,EX_nmi,
+              RF_PC_abort,EX_PC_abort, RF_PC,EX_PC, RF_nmi,EX_nmi,
               interrupt,EX_interrupt, int_req,EX_int_req,
               tr_is_equal,EX_tr_is_equal, tr_less_than,EX_tr_less_than);
   
@@ -1626,13 +1653,17 @@ begin
   -- check for overflow in EX, send it to MM for later processing
   ex_trapped <= '1' when (EX_can_trap = b"10" and ovfl = '1') else '0';
 
-  
-  is_exception <= exOvfl when MM_ex_trapped = '1' else EX_exception;
 
+ 
+  is_exception <=  -- TLB_excp_type when tlb_exception else
+                   MM_excp_type   when addrError           else
+                   exOvfl         when MM_ex_trapped = '1' else
+                   IFaddressError when EX_PC_abort         else
+                   EX_exception;
   
   
   COP0_DECODE_EXCEPTION_AND_UPDATE_STATUS:
-  process (EX_a_rt, is_exception, EX_trap_instr, EX_wreg,
+  process (EX_a_rt, is_exception, EX_trap_instr, 
            EX_cop0_reg, EX_cop0_sel, EX_nmi, EX_interrupt,EX_int_req,
            EX_is_delayslot, cop0_inp, EX_tr_is_equal, EX_tr_less_than,
            INDEX, RANDOM, EntryLo0, EntryLo1, CONTEXT, PAGEMASK, WIRED,
@@ -1666,8 +1697,7 @@ begin
     interrupt_taken <= '0';
     trap_taken      <= '0';
     ExcCode         <= cop0code_NULL;
-    BadVAddr_source <= '0';
-    BadVAddr_update <= '1';
+    -- BadVAddr_update <= '1';
     EX_mfc0         <= '0';
 
     newSTATUS             := STATUS;    -- preserve as needed
@@ -1833,7 +1863,7 @@ begin
         i_update_r      := cop0reg_STATUS;
         i_epc_update    := '0';
         i_excp_PCsel    := PCsel_EXC_0180; -- PC <= exception_0180
-        BadVAddr_update <= '0';
+        -- BadVAddr_update <= '0';
         if is_exception = MMaddressErrorST then
           ExcCode <= cop0code_AdES;
         else
@@ -1842,10 +1872,8 @@ begin
         if is_exception = IFaddressError then
           i_nullify       := '1';       -- nullify instructions in IF,RF
           i_epc_source    := b"010";    -- bad address is in EXCP_EX_PC
-          badVAddr_source <= '0';       -- instruction fetch
         else
-          i_epc_source    := b"011";    -- bad address is in EXCP_MM_PC
-          badVAddr_source <= '1';       -- load/store
+          i_epc_source    := b"010";    -- bad address is in EXCP_EX_PC
         end if;
 
       when exEHB =>                     -- stall processor to clear hazards
@@ -1855,7 +1883,25 @@ begin
       when exTLBP | exTLBR | exTLBWI | exTLBWR =>  -- TLB access
         i_stall := '1';                 -- stall the processor
         
+
+      when exTLBrefill | exTLBrefillWR =>
+
+        case is_exception is
+          when exTLBrefillWR => ExcCode <= cop0code_TLBS;
+          when exTLBrefill   => ExcCode <= cop0code_TLBL;
+          when others => null;
+        end case;
+        if EX_is_delayslot = '1' then -- instr is in delay slot
+          i_epc_source := b"010";     -- EX_PC, re-execute branch/jump
+        else
+          i_epc_source := b"001";     -- RF_PC
+        end if;
+        i_excp_PCsel := PCsel_EXC_0000; -- PC <= exception_0000
+        -- BadVAddr_update <= '0';        
+
+
         
+          
       when others =>                    -- interrupt pending?
 
         if ( (EX_nmi = '1') and (STATUS(STATUS_ERL) = '0') ) then
@@ -2022,12 +2068,12 @@ begin
     port map (clk, rst, cause_update, CAUSEinp, CAUSE);
 
 
-  -- EPC ------------------------------
+  -- EPC -- pg 97 ---------------------
   with epc_source select EPCinp <=
     PC              when b"000",        -- instr fetch exception
     RF_PC           when b"001",        -- invalid instr exception
     EX_PC           when b"010",        -- interrupt, eret, overflow
-    WB_PC           when b"011",        -- data memory exception
+    MM_PC           when b"011",        -- data memory exception
     alu_fwd_B       when others; -- b"100",        -- mtc0
     -- (others => 'X') when others;        -- invalid selection
     
@@ -2035,7 +2081,7 @@ begin
     port map (clk, rst, epc_update, EPCinp, EPC);
 
 
-  -- COUNT & COMPARE ------------------------------ not_stalled = '1'
+  -- COUNT & COMPARE -- pg 75, 78 ----------------- not_stalled = '1'
   compare_update <= '0' when (update = '1' and update_reg = cop0reg_COMPARE)
                     else '1';
   
@@ -2062,10 +2108,13 @@ begin
   COP0_DISABLE_COUNT: FFD port map (clk,'1',rst,disable_count, count_enable);
 
   
-  -- BadVAddr ------------------------------------
+  -- BadVAddr -- pg 74 ---------------------------
 
-  BadVAddr_inp <= EX_PC when badVAddr_source = '0'  -- instruction fetch
-                  else WB_result;                   -- load/store
+  BadVAddr_inp <= v_addr when addrError or tlb_miss_mm else  -- D-TLB | misaligned
+                  EX_PC  when EX_PC_abort              else  -- fetch misaligned
+                  PC;                                        -- I-TLB
+
+  BadVAddr_update <= '0' when tlb_exception or addrError else '1';
   
   COP0_BadVAddr: register32 generic map(x"00000000")
     port map (clk, rst, BadVAddr_update, BadVAddr_inp, BadVAddr);
@@ -2110,7 +2159,7 @@ begin
                   else not(tlb_probe);
 
   hit_mm_bit <= '0' when (hit_mm = TRUE) else '1';
-  
+
   with hit_mm_adr select tlb_adr_mm <= "000" when 0,
                                        "001" when 1,
                                        "010" when 2,
@@ -2159,7 +2208,7 @@ begin
   -- MMU EntryLo0 -- pg 63 -- cop0_2 ------------
 
   entryLo0_update <= '0' when (update = '1' and update_reg = cop0reg_EntryLo0)
-                  else not(tlb_read);
+                     else not(tlb_read);
   
   entryLo0_inp <= cop0_inp when tlb_read = '0' else tlb_entryLo0;
   
@@ -2180,11 +2229,6 @@ begin
 
   -- MMU Context -- pg 67 -- cop0_4 ------------
 
-  context_upd_pte <= '0' when (update = '1' and update_reg = cop0reg_Context)
-                     else '1';
-
-  context_upd_bad <= '0' when (not(hit_mm) or not(hit_pc)) else '1';
-
   assert true                          -- DEBUG
     report "pgSz " & integer'image(PAGE_SZ_BITS) &
            " va-1 " & integer'image(VABITS-1) &
@@ -2192,10 +2236,13 @@ begin
            " add " & integer'image(VABITS-1 - PAGE_SZ_BITS+1) &
            " lef " & integer'image( PC(VABITS-1 downto PAGE_SZ_BITS+1)'left )&
            " rig " & integer'image( PC(VABITS-1 downto PAGE_SZ_BITS+1)'right );
+
+  context_upd_pte <= '0' when (update = '1' and update_reg = cop0reg_Context)
+                     else '1';
+
+  context_upd_bad <= '0' when tlb_exception else '1';
   
-  tlb_context_inp <= v_addr(VABITS-1 downto PAGE_SZ_BITS+1) when not(hit_mm) else
-                     PC(VABITS-1 downto PAGE_SZ_BITS+1) when not(hit_pc) else
-                     (others => 'X');
+  tlb_context_inp <= tlb_excp_VA;
   
   MMU_ContextPTE: registerN generic map(9, b"000000000")
     port map (clk, rst, context_upd_pte,
@@ -2223,69 +2270,47 @@ begin
   
   -- MMU EntryHi -- pg 76 -- cop0_10 -----------  
   -- EntryHi holds the ASID of the current process, to check for a match
-  
-  entryHi_update <= '0' when (update = '1' and update_reg = cop0reg_EntryHi)
+
+  entryHi_update <= '0' when ( (update = '1' and update_reg = cop0reg_EntryHi)
+                               or ( tlb_exception ) )
                   else not(tlb_read);
   
-  entryHi_inp <= cop0_inp when tlb_read = '0' else tlb_entryhi;
+  entryHi_inp <= cop0_inp when tlb_read = '0' else
+                 tlb_excp_VA & EHI_ZEROS & EntryHi(EHI_ASIDHI_BIT downto EHI_ASIDLO_BIT) when tlb_exception else
+                 tlb_entryhi;
   
   MMU_EntryHi: register32 generic map(x"00000000")
     port map (clk, rst, entryHi_update, entryHi_inp, EntryHi);
 
-
-  MMU_exceptions: process(EX_mem_t, EX_wrmem, hit_mm, hit_pc,  -- pg 41 --
+ 
+  -- -- pg 41 ----------------------------------
+  MMU_exceptions: process(EX_wrmem, tlb_miss,
                           hit_mm_v, hit_mm_d, hit_pc_v, STATUS)
-    variable i_exception : exception_type;
   begin
 
-    -- check for InstructionFetches; if something happens in MM, that
-    --   takes priority over IF (i_exception is overwritten later)
+    TLB_excp_type <= exNOP;
+
+    -- first check for events later in the pipeline: LOADS and STORES
     
-    -- now check for events later in the pipeline: LOADS and STORES
-    
-    if EX_mem_t /= b"0000" then
-
-      if hit_mm = FALSE then     -- miss, check for TLBrefill or TLBdoubleFault
-
-        if STATUS(STATUS_EXL) = '1' then
-          i_exception := exTLBdblFault;
-        else
-          i_exception := exTLBrefill;
-        end if;
-
-      elsif hit_mm_v = '0' then  -- hit; check for TLBinvalid
-        
-        i_exception := exTLBinval;
-
-      elsif EX_wrmem = '0' and hit_mm_d = '0' then
-
-        i_exception := exTLBmod;
-
-      else
-
-        i_exception := exNOP;
-        
-      end if;
-        
-    elsif hit_pc = false then
-
+    if tlb_miss then            -- miss, check for TLBrefill or TLBdoubleFault
       if STATUS(STATUS_EXL) = '1' then
-        i_exception := exTLBdblFault;
+        TLB_excp_type <= exTLBdblFault;
+      elsif EX_wrmem = '0' then
+        TLB_excp_type <= exTLBrefillWR;
       else
-        i_exception := exTLBrefill;
+        TLB_excp_type <= exTLBrefill;
       end if;
-
+    elsif hit_mm_v = '0' then  -- hit; check for TLBinvalid
+      TLB_excp_type <= exTLBinval;
+    elsif EX_wrmem = '0' and hit_mm_d = '0' then  -- hit; check for TLBmodified
+      TLB_excp_type <= exTLBmod;
     elsif hit_pc_v = '0' then  -- hit; check for TLBinvalid
-        
-      i_exception := exTLBinval;
-
+      TLB_excp_type <= exTLBinval;
     else
-
-      i_exception := exNOP;        
-        
+      TLB_excp_type <= exNOP;
     end if;
 
-    MM_excp_TLB <= i_exception;
+    tlb_exception <= FALSE ; -- (TLB_excp_type /= exNOP);
 
   end process MMU_exceptions; -- -----------------------------------------
 
@@ -2437,8 +2462,16 @@ begin
   mm <= entryHi(EHI_AHI_BIT downto EHI_ALO_BIT) when tlb_probe = '1' else
         v_addr(VA_HI_BIT downto VA_LO_BIT);
 
+  tlb_miss_MM <= not(hit_mm) and (EX_mem_t /= b"0000");
+  tlb_miss_IF <= not(hit_pc);
 
-  -- TLB entry 0 -- initialized to 1st page of ROM
+  tlb_miss    <=  tlb_miss_IF or tlb_miss_MM;
+  
+  tlb_excp_VA <= v_addr(VA_HI_BIT downto VA_LO_BIT) when tlb_miss_MM else
+                 PC(VA_HI_BIT downto VA_LO_BIT);
+
+
+-- TLB entry 0 -- initialized to 1st page of ROM
   
   MMU_TAG0: register32 generic map(MMU_ini_tag_ROM0)
     port map (clk, rst, tlb_tag0_updt, tlb_tag_inp, tlb_tag0);
@@ -2613,7 +2646,8 @@ begin
 
   -- end of TLB TAG+DATA ARRAY ----------------------------------------
 
-  -- select mapping for IF
+  
+  -- select mapping for IF --------------------------------------------
   
   tlb_a2_pc <= 4 when (hit4_pc or hit5_pc or hit6_pc or hit7_pc) else 0;
   tlb_a1_pc <= 2 when (hit2_pc or hit3_pc or hit6_pc or hit7_pc) else 0;
@@ -2654,14 +2688,15 @@ begin
   phy_i_addr <= tlb_ppn_pc(PPN_BITS-1 downto 0) & PC(PAGE_SZ_BITS-1 downto 0);
 
 
-  -- select mapping for MM
+  -- select mapping for MM --------------------------------------------
 
   tlb_a2_mm <= 4 when (hit4_mm or hit5_mm or hit6_mm or hit7_mm) else 0;
   tlb_a1_mm <= 2 when (hit2_mm or hit3_mm or hit6_mm or hit7_mm) else 0;
   tlb_a0_mm <= 1 when (hit1_mm or hit3_mm or hit5_mm or hit7_mm) else 0;
   
-  hit_mm    <= hit0_mm or hit1_mm or hit2_mm or hit3_mm or
-               hit4_mm or hit5_mm or hit6_mm or hit7_mm;
+  hit_mm    <= (hit0_mm or hit1_mm or hit2_mm or hit3_mm or
+                hit4_mm or hit5_mm or hit6_mm or hit7_mm); 
+               -- and EX_mem_t /= b"0000";  -- hit AND is load or store
 
   hit_mm_adr <= (tlb_a2_mm + tlb_a1_mm + tlb_a0_mm);
   
@@ -2705,34 +2740,16 @@ begin
   PIPESTAGE_EXCP_EX_MM: reg_excp_EX_MM
     port map (clk, rst, excp_EX_MM_ld, EX_can_trap,MM_can_trap,   
               EX_excp_type,MM_excp_type_i, EX_PC,MM_PC,
-              EX_LLbit,MM_LLbit,
+              EX_LLbit,MM_LLbit, addrError,MM_abort,
               EX_cop0_a_c,MM_cop0_a_c, EX_cop0_val,MM_cop0_val,
               EX_trapped, MM_ex_trapped, EX_mfc0,MM_mfc0);
-
-    COP0_MM_EXCEPTIONS: process(MM_addr_error, MM_excp_type_i)
-    begin
-
-      if ( MM_excp_type_i = exNOP and       -- nothing bad from EX
-           MM_addr_error /= exNOP ) then    -- something wrong in MM
-        MM_abort <= '1';
-        MM_excp_type <= MM_addr_error;
-      else
-        MM_abort <= '0';
-        MM_excp_type <= exNOP;
-      end if;
-
-    end process COP0_MM_EXCEPTIONS;
-                        
-  -- MM does nothing while we do not have an MMU --------------------------
-
-
 
 
   -- ----------------------------------------------------------------------    
   PIPESTAGE_EXCP_MM_WB: reg_excp_MM_WB
     port map (clk, rst, excp_MM_WB_ld, MM_can_trap,WB_can_trap,   
               MM_excp_type, WB_excp_type, MM_PC,WB_PC,
-              MM_LLbit,WB_LLbit, MM_abort,WB_abort, 
+              MM_LLbit,WB_LLbit, MM_abort,WB_abort,
               MM_cop0_a_c,WB_cop0_a_c, MM_cop0_val,WB_cop0_val);
 
 

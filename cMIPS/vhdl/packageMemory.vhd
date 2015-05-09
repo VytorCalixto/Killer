@@ -154,7 +154,7 @@ package p_MEMORY is
   
   constant VABITS       : natural := 32;
   constant PABITS       : natural := 32;
-  constant PAGE_SZ      : natural := 4096;   -- 4k pages
+  constant PAGE_SZ      : natural := 4096;              -- 4k pages
   constant PAGE_SZ_BITS : natural := log2_ceil( PAGE_SZ );
 
   constant PPN_BITS     : natural := PABITS - PAGE_SZ_BITS;
@@ -168,7 +168,9 @@ package p_MEMORY is
   constant EHI_ASIDHI_BIT : natural := 7;  
   constant EHI_ALO_BIT  : natural := PAGE_SZ_BITS + 1;  -- maps 2 phy-pages
   constant EHI_AHI_BIT  : natural := 31;
-
+  constant EHI_ZEROS    : std_logic_vector(PAGE_SZ_BITS-EHI_AHI_BIT downto 0) :=
+    (others => '0');    
+  
   constant TAG_ASIDLO_BIT : natural := 0;
   constant TAG_ASIDHI_BIT : natural := 7;
   constant TAG_G_BIT    : natural := 8;

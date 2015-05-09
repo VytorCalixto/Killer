@@ -32,6 +32,8 @@ entity reg_excp_IF_RF is
   port(clk, rst, ld: in  std_logic;
        IF_excp_type: in  exception_type;
        RF_excp_type: out exception_type;
+       PC_abort:     in  boolean;
+       RF_PC_abort:  out boolean;
        IF_PC:        in  reg32;
        RF_PC:        out reg32);
 end reg_excp_IF_RF;
@@ -43,6 +45,7 @@ begin
     if rising_edge(clk) then
       if ld = '0' then
         RF_excp_type <= IF_excp_type ;
+        RF_PC_abort  <= PC_abort     ;
         RF_PC        <= IF_PC        ;
       end if;
     end if;
@@ -72,6 +75,8 @@ entity reg_excp_RF_EX is
        EX_cop0_sel:     out reg3;
        RF_is_delayslot: in  std_logic;
        EX_is_delayslot: out std_logic;
+       RF_PC_abort:     in  boolean;
+       EX_PC_abort:     out boolean;
        RF_PC:           in  reg32;
        EX_PC:           out reg32;
        RF_nmi:          in  std_logic;
@@ -101,6 +106,7 @@ begin
         EX_cop0_reg     <= RF_cop0_reg     ;
         EX_cop0_sel     <= RF_cop0_sel     ;
         EX_is_delayslot <= RF_is_delayslot ;
+        EX_PC_abort     <= RF_PC_abort     ;
         EX_PC           <= RF_PC           ;
         EX_nmi          <= RF_nmi          ;
         EX_interrupt    <= RF_interrupt    ;
@@ -131,6 +137,8 @@ entity reg_excp_EX_MM is
        MM_PC:         out reg32;
        EX_cop0_LLbit: in  std_logic;
        MM_cop0_LLbit: out std_logic;
+       addrError:     in  boolean;
+       MM_abort:      out boolean;
        EX_cop0_a_c:   in  reg5;
        MM_cop0_a_c:   out reg5;
        EX_cop0_val:   in  reg32;
@@ -155,6 +163,7 @@ begin
         MM_can_trap   <= EX_can_trap   ;
         MM_PC         <= EX_PC         ;
         MM_cop0_LLbit <= EX_cop0_LLbit ;
+        MM_abort      <= addrError     ;
         MM_cop0_a_c   <= EX_cop0_a_c   ;
         MM_cop0_val   <= EX_cop0_val   ;
         MM_ex_trapped <= EX_trapped    ;
@@ -183,8 +192,8 @@ entity reg_excp_MM_WB is
        WB_PC:         out reg32;
        MM_cop0_LLbit: in  std_logic;
        WB_cop0_LLbit: out std_logic;
-       MM_abort:      in  std_logic;
-       WB_abort:      out std_logic;
+       MM_abort:      in  boolean;
+       WB_abort:      out boolean;
        MM_cop0_a_c:   in  reg5;
        WB_cop0_a_c:   out reg5;
        MM_cop0_val:   in  reg32;
@@ -198,7 +207,7 @@ begin
     if rst = '0' then
       WB_can_trap   <= b"00";
       WB_cop0_LLbit <= '0';
-      WB_abort      <= '0';
+      WB_abort      <=  FALSE;
     elsif rising_edge(clk) then
       if ld = '0' then
         WB_excp_type  <= MM_excp_type  ;
