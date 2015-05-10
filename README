@@ -1,6 +1,6 @@
 cMIPS
 
-cMIPS - an FPGA ready VHDL model for 5-stage pipeline, MIPS32r2 core
+cMIPS is a synthesizable VHDL model for the 5-stage pipeline, MIPS32r2 core.
 
 The VHDL model mimics the pipeline design described in Patterson & Hennessy's
 book (Computer Organisation and Design) and is an (almost) complete
