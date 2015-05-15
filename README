@@ -3,22 +3,21 @@ cMIPS
 cMIPS is a synthesizable VHDL model for the 5-stage pipeline, MIPS32r2 core.
 
 The VHDL model mimics the pipeline design described in Patterson & Hennessy's
-book (Computer Organisation and Design) and is an (almost) complete
-implementation of the MIPS32r2 instruction set.
+book (Computer Organisation and Design) and is a complete implementation
+of the MIPS32r2 instruction set.
 
 The model was synthesized for an Altera EP4CE30F23.  The model runs at 50 MHz
-(top development board speed) and uses up 15% of combinational blocks and
-5% of logic registers in the FPGA.
+(top board speed) and uses up 15% of the combinational blocks and 5% of the
+logic registers on the FPGA.
 
 Processor model runs C code, compiled with GCC;  there are scripts to
 compile and assemble code to run on the simulator or the FPGA.
 
 Core has all forwarding paths and full interlocks for data and control hazards.
 
-Coprocessor0 is partially implemented, six hardware interrupts + NMI in
-"Interrupt Compatibility Mode";  TLB implementation will be available soon.
-
-The control instructions break, syscall, trap, mfc0, mtc0, eret, ei, di, ll, sc
+Coprocessor0 supports six hardware interrupts + NMI in "Interrupt
+Compatibility Mode" and an 8-way fully associative TLB.  The control
+instructions break, syscall, trap, mfc0, mtc0, eret, ei, di, ll, sc
 are fully implemented.
 
 Partial-word loads and stores (word, half-word, byte) implemented at the
@@ -26,6 +25,6 @@ processor's memory interface.
 
 Testbench for tests includes processor, RAM, ROM and (simulator) file I/O.
 
-Top level file for synthesis includes processor, RAM, ROM, LCD display,
-2x7segment LED display, keypad and UART.  TLB, SDRAM controller, VGA interface
-are in the works.
+Top level file for synthesis includes processor, RAM, ROM, LCD display
+controller, 2x7segment LED display, keypad and UART.  SDRAM controller,
+VGA interface and Ethernet port are in the works.
