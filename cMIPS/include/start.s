@@ -17,17 +17,10 @@
 	# initialize SP: ramTop-8
 _start: li   $sp,(x_DATA_BASE_ADDR+x_DATA_MEM_SZ-8)
 
-	# set STATUS, cop0, hw interrupt IRQ2,IRQ3 enabled
-        li   $k0, 0x10000c01
+	# set STATUS, cop0, hw interrupt IRQ7,IRQ6,IRQ5 enabled
+        li   $k0, 0x1000e001
         mtc0 $k0, cop0_STATUS
  
-	la   $k0, _go_main  # start main() in user mode
-        mtc0 $k0, cop0_EPC
-        nop
-        eret      # go into user mode, all else disabled
-	nop
-
-_go_main:
 	nop
 	jal main  # on returning from main(), MUST go into exit()
 	nop       #  to stop the simulation.
@@ -44,15 +37,17 @@ _exit:	nop	  # flush pipeline
 
 
 	#----------------------------------------------------------------
+	.global _excp_0000
+	.global excp_0000
+	.global _excp_0100
+	.global excp_0100
 	.global _excp_0180
 	.global excp_0180
 	.global _excp_0200
 	.global excp_0200
-	.global _excp_0000
-	.global excp_0000
-
-	
-	#----------------------------------------------------------------
+	##
+	##================================================================
+	##
 	.org x_EXCEPTION_0000,0 # exception vector_0000
 	.ent _excp_0000
 excp_0000:
@@ -75,116 +70,195 @@ nmi_reset_handler:
 	# j excp_0000ret       #  OR do something else!
 	.end _excp_0000
 
+	##
+	##================================================================
+	## exception vector_0100 TLBrefill, from See MIPS Run pg 145
+	##
+	.org x_EXCEPTION_0100,0
+	.ent _excp_0100
+	.set noreorder
+	.set noat
 
-	#----------------------------------------------------------------
-	# handler for various exceptional conditions and HW errors
+excp_0100:
+_excp_0100:
+	mfc0 $k1, cop0_Context
+	lw   $k0, 0($k1)           # k0 <- TP[Context.lo]
+	lw   $k1, 8($k1)           # k1 <- TP[Context.hi]
+	mtc0 $k0, cop0_EntryLo0    # EntryLo0 <- k0 = even element
+	mtc0 $k1, cop0_EntryLo1    # EntryLo1 <- k1 = odd element
+	ehb
+	tlbwr	                   # update TLB
+	eret	
+	.end _excp_0100
+
+
+	##
+	##================================================================
+	## handler for all exceptions except interrupts and TLBrefill
+	##
+        .bss
+        .align  2
+        .comm   _excp_saves 16*4       # area to save up to 16 registers
+        # _excp_saves[0]=CAUSE, [1]=STATUS, [2]=ASID,
+	#            [8]=$ra, [9]=$a0, [10]=$a1, [11]=$a2, [12]=$a3
+        .text
+        .set    noreorder
+
 	.org x_EXCEPTION_0180,0  # exception vector_180
 	.ent _excp_0180
 excp_0180:
 _excp_0180:
+	mfc0 $k0, cop0_STATUS
+	lui  $k1, %hi(_excp_saves)
+	ori  $k1, $k1, %lo(_excp_saves)
+	sw   $k0, 1*4($k1)
         mfc0 $k0, cop0_CAUSE
-	andi $k0, $k0, 0x3f    # keep only ExceptionCode
-	slt  $k1, $k0, 0x20    # not an address/bus error -- Table 8-25
-	beq  $k1, $zero, excp_0180ret
-	nop
-	and  $k0, $k0, 0x1f    # keep type of address error
+	sw   $k0, 0*4($k1)
+	
+	andi $k0, $k0, 0x3f    # keep only the first 16 ExceptionCode & b"00"
+	sll  $k0, $k0, 1       # displacement in vector is 8 bytes
 	lui  $k1, %hi(excp_tbl)
         ori  $k1, $k1, %lo(excp_tbl)
 	add  $k1, $k1, $k0
 	jr   $k1
 	nop
-excp_tbl: j excp_0180ret       # interrupt, do nothing and return
-	wait 0x04  # addr error      -- abort simulation, from Table 8-25
-	wait 0x08  # addr error      -- abort simulation
-	wait 0x0c  # addr error      -- abort simulation
-	wait 0x10  # addr error LD   -- abort simulation
-	wait 0x14  # addr error ST   -- abort simulation
-	wait 0x18  # bus error IF    -- abort simulation
-	wait 0x1c  # bus error LD/ST -- abort simulation
-	wait 0xff  # any other -- should never arrive here, abort simulation
+
+excp_tbl: # see Table 8-25, pg 95,96
+	wait 0x02  # interrupt, should never arrive here, abort simulation
 	nop
 
+	j h_Mod  # 1
+	nop
+
+	j h_TLBL # 2
+	nop
+
+	j h_TLBS # 3
+	nop
+
+	wait 0x04  # 4 AdEL addr error      -- abort simulation
+	nop
+	wait 0x05  # 5 AdES addr error      -- abort simulation
+	nop
+	wait 0x06  # 6 IBE addr error      -- abort simulation
+	nop
+	wait 0x07  # 7 DBE addr error      -- abort simulation
+	nop
+
+	j h_syscall # 8
+	nop
+
+	j h_breakpoint # 9
+	nop
+
+	j h_RI    # 10 reserved instruction
+	nop
+
+	j h_CpU   # 11 coprocessor unusable
+	nop
+
+	j h_Ov    # 12 overflow
+	nop
+
+	j h_trap  # 13 trap
+	nop
+	
+	wait 0x14 # reserved, should never get here -- abort simulation
+	nop
+	
+	wait 0x15 # PF exception, should never get here -- abort simulation
+	nop
+
+h_Mod:	
+h_TLBL:		
+h_TLBS:	
+h_syscall:
+h_breakpoint:	
+h_RI:	
+h_CpU:	
+h_Ov:	
+h_trap:	
+	
 excp_0180ret:
-	li   $k0, 0x1000ff09   	# enable interrupts, switch to user mode
-        mtc0 $k0, cop0_STATUS
-	eret
+	lui  $k1, %hi(_excp_saves) # Read previous contents of STATUS
+	ori  $k1, $k1, %lo(_excp_saves)
+	lw   $k0, 1*4($k1)
+	# mfc0 $k0, cop0_STATUS
+	
+	lui  $k1, 0xffff           #  and do not modify its contents
+	ori  $k1, $k1, 0xfff1      #  except for re-enabling interrupts
+	ori  $k0, $k0, M_StatusIEn #  and keeping user/kernel mode
+	and  $k0, $k1, $k0         #  as it was on exception entry 
+	mtc0 $k0, cop0_STATUS	
+	eret			   # Return from exception
+
 	.end _excp_0180
 	#----------------------------------------------------------------
 
-	
-	#----------------------------------------------------------------
+	##
+	##===============================================================
+	## interrupt handlers at exception vector 0200
+	##
 	# name all handlers here
-	.extern countCompare
-	.extern extCounter
-	.extern UARTinterr
-	.org x_EXCEPTION_0200,0   # exception vector_200, interrupt handlers
-	.ent _excp_0200
+	.extern countCompare  # IRQ7 = hwIRQ5, see vhdl/tb_cMIPS.vhd
+	.extern UARTinterr    # IRQ6 - hwIRQ4
+	.extern extCounter    # IRQ5 - hwIRQ3
+
 	.set M_CauseIM,0x0000ff00   # keep bits 15..8 -> IM = IP
 	.set M_StatusIEn,0x0000ff01 # user mode, enable all interrupts
+
+	.set noreorder
+	
+	.org x_EXCEPTION_0200,0     # exception vector_200, interrupt handlers
+	.ent _excp_0200
 excp_0200:
 _excp_0200:
 	mfc0 $k0, cop0_CAUSE
 	andi $k0, $k0, M_CauseIM  # Keep only IP bits from Cause
 	mfc0 $k1, cop0_STATUS
 	and  $k0, $k0, $k1        # and mask with IM bits 
-	beq  $k0, $zero, Dismiss  
+
+	srl  $k0, $k0, 11	  # keep only 3 MS bits of IP (irq7..5)
+	lui  $k1, %hi(handlers_tbl) # plus displacement in j-table of 8 bytes
+	ori  $k1, $k1, %lo(handlers_tbl)
+	add  $k1, $k1, $k0
+	jr   $k1
 	nop
-	
-	# Find out which irq is active and dispatch to handler
-hand_7:	andi $k1, $k0, 0x8000	  # handle IP7=HW5
-	# beq  $k1, $zero, hand_6
-	beq  $k1, $zero, hand_3   # CHANGE THIS WHEN NEW HANDLERS ARE ADDED
+
+handlers_tbl:
+	j Dismiss		   # no request: 000
 	nop
-	j countCompare
-	nop
-hand_6:	andi $k1, $k0, 0x4000	  # handle IP6=HW4
-	beq  $k1, $zero, hand_5
-	nop
-	j excp_0200ret            # add proper handler here
-	nop
-hand_5:	andi $k1, $k0, 0x2000	  # handle IP5=HW3
-	beq  $k1, $zero, hand_4
-	nop
-	j excp_0200ret            # add proper handler here
-	nop
-hand_4:	andi $k1, $k0, 0x1000	  # handle IP4=HW2
-	beq  $k1, $zero, hand_3
-	nop
-	j excp_0200ret            # add proper handler here
-	nop
-hand_3:	andi $k1, $k0, 0x0800	  # handle IP3=HW1
-	beq  $k1, $zero, hand_2
+
+	j extCounter		   # lowest priority, IRQ5: 001
+	nop	
+
+	j UARTinterr		   # mid priority, IRQ6: 01x
 	nop
 	j UARTinterr
 	nop
-hand_2:	andi $k1, $k0, 0x0400	  # handle IP2=HW0
-	beq  $k1, $zero, hand_1
+
+	j countCompare             # highest priority, IRQ7: 1xx
 	nop
-	j extCounter
+	j countCompare
 	nop
-hand_1:	andi $k1, $k0, 0x0200	  # handle IP1=SW1
-	beq  $k1, $zero, hand_0
+	j countCompare
 	nop
-	j excp_0200ret            # add proper handler here
+	j countCompare
 	nop
-hand_0:	andi $k1, $k0, 0x0100	  # handle IP0=SW0
-	beq  $k1, $zero, Dismiss
-	nop
-	j excp_0200ret		  # add proper handler here
-	nop
-	
-Dismiss:                # No pending request, must have been noise
-	nop             #  do nothing and return
+
+
+Dismiss: # No pending request, must have been noise
+	 #  do nothing and return
 
 excp_0200ret:
-	mfc0 $k0, cop0_STATUS	# Read STATUS register
-	lui  $k1, 0xffff           #  and do not modify its contents
+	mfc0 $k0, cop0_STATUS	   # Read STATUS register
+	addi $k1, $zero, -15       #  and do not modify its contents -15=fff1
 	ori  $k0, $k0, M_StatusIEn #  except for re-enabling interrupts
-	ori  $k1, $k1, 0xfff1      #  and going into user mode
-	and  $k0, $k1, $k0
-	mtc0 $k0, cop0_STATUS	
-	eret			# Return from interrupt
+	and  $k0, $k1, $k0         #  and keeping user/kernel mode
+	mtc0 $k0, cop0_STATUS      #  as it was on interrupt entry 	
+	eret			   # Return from interrupt
 	nop
+
 	.end _excp_0200
 	#----------------------------------------------------------------
 
@@ -193,3 +267,4 @@ excp_0200ret:
 	#----------------------------------------------------------------
 	# normal code starts here -- do not edit next line
 	.org x_ENTRY_POINT,0
+

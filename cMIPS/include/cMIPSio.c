@@ -167,40 +167,9 @@ char *memset(char *dst, const int val, int len) {
 
 
 
-#endif // FOR_SIMULATION
 
+#else  // compile FOR_SYNTHESIS
 
-
-//=======================================================================
-// external counter -- counts down to zero and stops or interrupts
-//=======================================================================
-// write an integer with number of pulses to count and start counter
-//  if interr not 0, then will interrupt when count reaches zero
-void startCounter(int n, int interr) {
-  int *IO = (int *)IO_COUNT_ADDR;
-  int interrupt;
-  // set bit 31 to cause an interrupt on count==n, reset for no interrupt
-  interrupt = (interr == 0 ? 0x00000000 : 0x80000000);
-
-  // set bit 30 to start counting, reset to stop
-  *IO = (interrupt | 0x40000000 | (0x3fffffff & n)); 
-}
-
-// stop the counter, keep current count & interrupt status
-void stopCounter(void) {
-  int *IO = (int *)IO_COUNT_ADDR;
-  int value;
-  
-  value = *IO;
-  *IO = value & 0xbfffffff; // reset bit 30 to stop counter
-}
-
-// read counter value and interrupt status
-int readCounter(void) {
-  int *IO = (int *)IO_COUNT_ADDR;
-
-  return *IO;
-}; //--------------------------------------------------------------------
 
 
 
@@ -378,5 +347,42 @@ void DSP7SEGput(int MSD, int MSdot, int lsd, int lsdot) {
   *IO = dot1 | dot0 | dig1 | dig0;
 }
 //-----------------------------------------------------------------------
+
+
+#endif // FOR_SYNTHESIS
+
+
+
+//=======================================================================
+// external counter -- counts down to zero and stops or interrupts
+//=======================================================================
+// write an integer with number of pulses to count and start counter
+//  if interr not 0, then will interrupt when count reaches zero
+void startCounter(int n, int interr) {
+  int *IO = (int *)IO_COUNT_ADDR;
+  int interrupt;
+  // set bit 31 to cause an interrupt on count==n, reset for no interrupt
+  interrupt = (interr == 0 ? 0x00000000 : 0x80000000);
+
+  // set bit 30 to start counting, reset to stop
+  *IO = (interrupt | 0x40000000 | (0x3fffffff & n)); 
+}
+
+// stop the counter, keep current count & interrupt status
+void stopCounter(void) {
+  int *IO = (int *)IO_COUNT_ADDR;
+  int value;
+  
+  value = *IO;
+  *IO = value & 0xbfffffff; // reset bit 30 to stop counter
+}
+
+// read counter value and interrupt status
+int readCounter(void) {
+  int *IO = (int *)IO_COUNT_ADDR;
+
+  return *IO;
+}; //--------------------------------------------------------------------
+
 
 

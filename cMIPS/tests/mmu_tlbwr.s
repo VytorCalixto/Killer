@@ -1,7 +1,7 @@
 	##
 	## Test the TLB as if it were just a memory array
 	## Perform a random write, then probe for it
-	##   writes are such thar first two probes fail, next two succeed
+	##   writes are such that first two probes fail, next two succeed
 	## Because of timing, only one WRITE -> PROBE can be tested
 	##   "deterministically" as changes to core timing may break the test
 	##
@@ -9,35 +9,33 @@
 	## EntryHi     : EntryLo0           : EntryLo1
 	## VPN2 g ASID : PPN0 ccc0 d0 v0 g0 : PPN1 ccc1 d1 v1 g1
 
-	## TLB(i): VPN2 g ASID : PFN0 ccc0 d0 v0 : PFN1 ccc1 d1 v1
-	## TLB(0): 0    0 00   : x00  010  0  1  : x11  010  0  1
-	## TLB(1): 1    1 ff   : x21  011  0  1  : x31  011  0  1
-	## TLB(2): 2    0 77   : x41  010  1  1  : x51  011  1  1
-	## TLB(3): 3    1 01   : x61  011  1  1  : x71  111  1  1
-
 	.include "cMIPS.s"
 
 	.set MMU_CAPACITY, 8
-	.set MMU_WIRED,    1  ### do not change mapping for base of ROM
+	.set MMU_WIRED,    2  ### do not change mapping for base of ROM
+	                      ###   nor I/O addresses
 
-	.set entryHi_0,  0x00010000 #                 pfn0  zzcc cdvg
-        .set entryLo0_0, 0x00000012 #  x0 x0 x0 x0 x0 0000  0001 0010 x12
-        .set entryLo1_0, 0x00000412 #  x0 x0 x0 x0 x0 0100  0001 0010 x412
+	# New entries cannot overwrite tlb[0.1] which maps base of ROM + I/O
+	
+	# EntryHi cannot have an ASID different from zero, otw TLB misses
+	.set entryHi_1,  0x00012000 #                 pfn0  zzcc cdvg
+	.set entryLo0_1, 0x0000091b #  x0 x0 x0 x0 x0 1001  0001 1011 x91b
+	.set entryLo1_1, 0x00000c1b #  x0 x0 x0 x0 x0 1100  0001 1011 xc1b
 
-        .set entryHi_1,  0x000020ff #                 pfn0  zzcc cdvg
-        .set entryLo0_1, 0x0000091b #  x0 x0 x0 x0 x0 1001  0001 1011 x91b
-        .set entryLo1_1, 0x00000c1b #  x0 x0 x0 x0 x0 1100  0001 1011 xc1b
+	.set entryHi_2,  0x00014000 #                 pfn0  zzcc cdvg
+	.set entryLo0_2, 0x00001016 #  x0 x0 x0 x0 x1 0000  0001 0110 x1016
+	.set entryLo1_2, 0x0000141e #  x0 x0 x0 x0 x1 0100  0001 1110 x141e
 
-        .set entryHi_2,  0x00004077 #                 pfn0  zzcc cdvg
-        .set entryLo0_2, 0x00001016 #  x0 x0 x0 x0 x1 0000  0001 0110 x1016
-        .set entryLo1_2, 0x0000141e #  x0 x0 x0 x0 x1 0100  0001 1110 x141e
+	.set entryHi_3,  0x00016000 #                 pfn0  zzcc cdvg
+	.set entryLo0_3, 0x0000191f #  x0 x0 x0 x0 x1 1001  0001 1111 x191f
+	.set entryLo1_3, 0x00001d3f #  x0 x0 x0 x0 x1 1101  0011 1111 x1d3f
 
-        .set entryHi_3,  0x00006001 #                 pfn0  zzcc cdvg
-        .set entryLo0_3, 0x0000191f #  x0 x0 x0 x0 x1 1001  0001 1111 x191f
-        .set entryLo1_3, 0x00001d3f #  x0 x0 x0 x0 x1 1101  0011 1111 x1d3f
+	.set entryHi_4,  0x00018000 #                 pfn0  zzcc cdvg
+	.set entryLo0_4, 0x00000012 #  x0 x0 x0 x0 x0 0000  0001 0010 x12
+	.set entryLo1_4, 0x00000412 #  x0 x0 x0 x0 x0 0100  0001 0010 x412
 	
 	# initialize TLB with these
-	.set entryHi_i,  0x00ffffff #                    pfn0  cc cdvg
+	.set entryHi_i,  0x00ffff00 #                    pfn0  cc cdvg
 	.set entryLo0_i, 0x0fff185f #  x0 x0 x0 xf xf 11 11 11 00 0000 xfffc0
 	.set entryLo1_i, 0x0fff1c7f #  x0 xf xf xf xf 11 11 11 00 0000 xfffc0
 
@@ -49,14 +47,16 @@
 	.ent _start
 _start:	la   $31, x_IO_BASE_ADDR
 
+        li   $2, cop0_STATUS_reset
+        addi $2, $2, -2
+        mtc0 $2, cop0_STATUS ### make sure CPU is not at exception level
+	
 	li   $2, MMU_WIRED
 	mtc0 $2, cop0_Wired  ### make sure all but 0'th TLB entries are usable
+	
 
 	##
 	## Initialize TLB with entries that will not match in tests below
-	## NOTE: this is strictly forbidden as all entries are equal
-	##       we only do this while testing the TLB
-	##       NEVER do this in normal usage
 	##
 	la   $2, entryHi_i
 	mtc0 $2, cop0_EntryHi
@@ -65,41 +65,69 @@ _start:	la   $31, x_IO_BASE_ADDR
 	la   $4, entryLo1_i
 	mtc0 $4, cop0_EntryLo1
 
-	### do not change mapping for base of ROM at tlb(0)
-	li   $5, 1
-	mtc0 $5, cop0_Index
-	tlbwi
+	### do not change mapping for base of ROM at tlb[0] not tlb[1]
 	li   $5, 2
 	mtc0 $5, cop0_Index
 	tlbwi
+
+	addi $2, $2, 0x4000  # increase VPN2
 	li   $5, 3
 	mtc0 $5, cop0_Index
 	tlbwi
+
+	addi $2, $2, 0x4000  # increase VPN2
 	li   $5, 4
 	mtc0 $5, cop0_Index
 	tlbwi
+
+	addi $2, $2, 0x4000  # increase VPN2
 	li   $5, 5
 	mtc0 $5, cop0_Index
 	tlbwi
+
+	addi $2, $2, 0x4000  # increase VPN2
 	li   $5, 6
 	mtc0 $5, cop0_Index
 	tlbwi
+
+	addi $2, $2, 0x4000  # increase VPN2
 	li   $5, 7
 	mtc0 $5, cop0_Index
 	tlbwi
 	
 
 	mfc0 $19, cop0_Random    # check for randomness
-	sw   $19, 0($31)
-	mfc0 $19, cop0_Random    # check for randomness
-	sw   $19, 0($31)
+	mfc0 $20, cop0_Random    # check for randomness	
+	mfc0 $21, cop0_Random    # check for randomness
+	mfc0 $22, cop0_Random    # check for randomness
+	
+	beq $19, $20, error4
 	nop
-	mfc0 $19, cop0_Random    # check for randomness
-	sw   $19, 0($31)
-	mfc0 $19, cop0_Random    # check for randomness
-	sw   $19, 0($31)
-	li   $30, '\n'
-	sw   $30, x_IO_ADDR_RANGE($31)
+	beq $19, $21, error4
+	nop
+	beq $19, $22, error4
+	nop
+	beq $20, $21, error4
+	nop
+	beq $20, $22, error4
+	nop
+	beq $21, $22, error4
+	nop
+
+        li $30, 'o'
+        sw $30, x_IO_ADDR_RANGE($31)
+        li $30, 'k'
+        j  next4
+        sw $30, x_IO_ADDR_RANGE($31)
+
+error4: li $30, 'e'
+        sw $30, x_IO_ADDR_RANGE($31)
+        li $30, 'r'
+        sw $30, x_IO_ADDR_RANGE($31)
+        sw $30, x_IO_ADDR_RANGE($31)
+
+next4:  li $30, '\n'
+        sw $30, x_IO_ADDR_RANGE($31)
 
 
 	## write to a random location
@@ -121,11 +149,11 @@ _start:	la   $31, x_IO_BASE_ADDR
 	## check first record was written
 	## make sure it will miss by probing for Entry_0
 	##
-	la   $5, entryHi_0
+	la   $5, entryHi_4
 	mtc0 $5, cop0_EntryHi
-	la   $5, entryLo0_0
+	la   $5, entryLo0_4
 	mtc0 $5, cop0_EntryLo0
-	la   $5, entryLo1_0
+	la   $5, entryLo1_4
 	mtc0 $5, cop0_EntryLo1
 
 	nop
@@ -149,10 +177,6 @@ miss3:	li   $30, 'm'
 
 hit3:	li   $30, 'h'
 	sw   $30, x_IO_ADDR_RANGE($31)
-	li   $30, '='
-	sw   $30, x_IO_ADDR_RANGE($31)
-	andi $30, $19, (MMU_CAPACITY - 1)
-	addi $30, $30, '0'
 	sw   $30, x_IO_ADDR_RANGE($31)
 	li   $30, '\n'
 	sw   $30, x_IO_ADDR_RANGE($31)
@@ -212,11 +236,6 @@ miss2:	li   $30, 'm'
 
 hit2:	li   $30, 'h'
 	sw   $30, x_IO_ADDR_RANGE($31)
-	li   $30, '='
-	sw   $30, x_IO_ADDR_RANGE($31)
-	andi $30, $19, (MMU_CAPACITY - 1)
-	addi $30, $30, '0'
-	sw   $30, x_IO_ADDR_RANGE($31)
 	li   $30, '\n'
 	sw   $30, x_IO_ADDR_RANGE($31)
 	nop
@@ -239,7 +258,7 @@ next1:	li   $30, '\n'
 	tlbp
 	
 	mfc0 $19, cop0_Index    # check for bit31=1
-	sw   $19, 0($31)
+	# sw   $19, 0($31)
 
 	slt  $20, $19, $zero    # $20 <- (bit31 = 1)
 	beq  $20, $zero, hit1
@@ -252,11 +271,6 @@ miss1:	li   $30, 'm'
 	j    next0
 
 hit1:	li   $30, 'h'
-	sw   $30, x_IO_ADDR_RANGE($31)
-	li   $30, '='
-	sw   $30, x_IO_ADDR_RANGE($31)
-	andi $30, $19, (MMU_CAPACITY - 1)
-	addi $30, $30, '0'
 	sw   $30, x_IO_ADDR_RANGE($31)
 	li   $30, '\n'
 	sw   $30, x_IO_ADDR_RANGE($31)
@@ -287,7 +301,7 @@ next0:	li   $30, '\n'
 	tlbp
 	
 	mfc0 $19, cop0_Index    # check for bit31=1
-	sw   $19, 0($31)
+	# sw   $19, 0($31)
 
 	slt  $20, $19, $zero    # $20 <- (bit31 = 1)
 	beq  $20, $zero, hit0
@@ -300,11 +314,6 @@ miss0:	li   $30, 'm'
 	j    done
 
 hit0:	li   $30, 'h'
-	sw   $30, x_IO_ADDR_RANGE($31)
-	li   $30, '='
-	sw   $30, x_IO_ADDR_RANGE($31)
-	andi $30, $19, (MMU_CAPACITY - 1)
-	addi $30, $30, '0'
 	sw   $30, x_IO_ADDR_RANGE($31)
 	li   $30, '\n'
 	sw   $30, x_IO_ADDR_RANGE($31)

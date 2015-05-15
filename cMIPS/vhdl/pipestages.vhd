@@ -164,6 +164,8 @@ entity reg_EX_MM is
        MM_B:       out reg32;
        EX_result:  in  reg32;
        MM_result:  out reg32;
+       EX_addr:    in  reg32;
+       MM_addr:    out reg32;
        HI:         in  reg32;
        MM_HI:      out reg32;
        LO:         in  reg32;
@@ -196,6 +198,7 @@ begin
         MM_A        <= EX_A      ;
         MM_B        <= EX_B      ;
         MM_result   <= EX_result ;
+        MM_addr     <= EX_addr   ;
         MM_HI       <= HI        ;
         MM_LO       <= LO        ;
         MM_alu_move_ok <= EX_alu_move_ok ;

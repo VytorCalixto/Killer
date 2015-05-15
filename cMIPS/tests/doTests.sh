@@ -72,7 +72,7 @@ a_BHW="lbsb lhsh lwsw lwswIncr swlw lwl_lwr"
 a_MEM="lwSweepRAM"
 a_CTR="teq_tne tlt_tlti tltu_tgeu eiDI ll_sc overflow"
 a_COP="mtc0CAUSE2 mtc0EPC syscall break mfc0CONFIG badVAddr badVAddrMM"
-a_MMU="mmu_index mmu_tlbwi mmu_tlbp mmu_tlbwr"
+a_MMU="mmu_index mmu_tlbwi mmu_tlbp mmu_tlbwr mmu_context mmu_refill"
 
 ## these tests MUST be run with FAKE CACHES
 # a_IOs="kbd7seg" 

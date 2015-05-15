@@ -1,10 +1,10 @@
 
 	# see vhdl/packageMemory.vhd for addresses
         .set x_INST_BASE_ADDR,0x00000000
-        .set x_INST_MEM_SZ,0x00002000
+        .set x_INST_MEM_SZ,0x00004000
 
-        .set x_DATA_BASE_ADDR,0x00400000
-        .set x_DATA_MEM_SZ,0x00002000
+        .set x_DATA_BASE_ADDR,0x04000000
+        .set x_DATA_MEM_SZ,0x00004000
 	
         .set x_IO_BASE_ADDR,0x0F000000
         .set x_IO_MEM_SZ,0x00002000
@@ -21,7 +21,7 @@
 	.set x_EXCEPTION_0000,0x00000080
 	.set x_EXCEPTION_0100,0x000000A0
 	.set x_EXCEPTION_0180,0x000000C0
-	.set x_EXCEPTION_0200,0x00000140
+	.set x_EXCEPTION_0200,0x00000200
 	.set x_ENTRY_POINT,   0x00000300
 
 	.set cop0_Index,   $0

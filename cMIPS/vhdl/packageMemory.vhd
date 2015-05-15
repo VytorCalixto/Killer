@@ -41,16 +41,16 @@ package p_MEMORY is
   -- begin DO NOT change these names as several scripts depend on them --
   --  you may change the values, not names nor formatting              --
   constant x_INST_BASE_ADDR : reg32   := x"00000000";
-  constant x_INST_MEM_SZ    : reg32   := x"00002000";  
-  constant x_DATA_BASE_ADDR : reg32   := x"00400000";  
-  constant x_DATA_MEM_SZ    : reg32   := x"00002000";
+  constant x_INST_MEM_SZ    : reg32   := x"00004000";  
+  constant x_DATA_BASE_ADDR : reg32   := x"04000000";  
+  constant x_DATA_MEM_SZ    : reg32   := x"00004000";
   constant x_IO_BASE_ADDR   : reg32   := x"0F000000";
   constant x_IO_MEM_SZ      : reg32   := x"00002000";
   constant x_IO_ADDR_RANGE  : reg32   := x"00000020";
   constant x_EXCEPTION_0000 : reg32   := x"00000080";
   constant x_EXCEPTION_0100 : reg32   := x"000000A0";
   constant x_EXCEPTION_0180 : reg32   := x"000000C0";
-  constant x_EXCEPTION_0200 : reg32   := x"00000140";
+  constant x_EXCEPTION_0200 : reg32   := x"00000200";
   constant x_ENTRY_POINT    : reg32   := x"00000300";
   -- end DO NOT change these names --
 
@@ -85,7 +85,7 @@ package p_MEMORY is
     IO_BASE_ADDR + (IO_MAX_NUM_DEVS - 1)*IO_ADDR_RANGE;
 
 
-  -- DATA CACHE parameters ----------------------------------------------
+  -- DATA CACHE parameters ================================================
   
   -- The combination of capacity, associativity and block/line size
   --  MUST be such that DC_INDEX_BITS >= 6 (64 sets/way)
@@ -110,7 +110,7 @@ package p_MEMORY is
     std_logic_vector(to_signed(DC_NUM_WAYS - 1, 3));
 
   
-  -- INSTRUCTION CACHE parameters ---------------------------------------
+  -- INSTRUCTION CACHE parameters =========================================
 
   -- The combination of capacity, associativity and block/line size
   --  MUST be such that IC_INDEX_BITS >= 6 (64 sets/via)
@@ -143,7 +143,7 @@ package p_MEMORY is
   constant icache_Stats_hit   : reg3 := "101";
 
   
-  -- MMU parameters -----------------------------------------------------
+  -- MMU parameters ========================================================
 
   -- constants for CONFIG1 cop0 register (Table 8-24 pg 103)
   constant MMU_CAPACITY : natural := 8;
@@ -165,11 +165,11 @@ package p_MEMORY is
   constant ASID_LO_BIT  : natural := 0;
 
   constant EHI_ASIDLO_BIT : natural := 0;
-  constant EHI_ASIDHI_BIT : natural := 7;  
+  constant EHI_ASIDHI_BIT : natural := 7;
+  constant EHI_G_BIT    : natural := 8;
   constant EHI_ALO_BIT  : natural := PAGE_SZ_BITS + 1;  -- maps 2 phy-pages
   constant EHI_AHI_BIT  : natural := 31;
-  constant EHI_ZEROS    : std_logic_vector(PAGE_SZ_BITS-EHI_AHI_BIT downto 0) :=
-    (others => '0');    
+  constant EHI_ZEROS    : std_logic_vector(PAGE_SZ_BITS-EHI_G_BIT-1 downto 0) := (others => '0');    
   
   constant TAG_ASIDLO_BIT : natural := 0;
   constant TAG_ASIDHI_BIT : natural := 7;
@@ -195,6 +195,8 @@ package p_MEMORY is
   constant DAT_AHI_BIT  : natural := DAT_ALO_BIT + PPN_BITS - 1;
   constant DAT_REG_BITS : natural := DAT_ALO_BIT + PPN_BITS;
 
+  constant ContextPTE_init : reg9 := b"000000000";
+  
   subtype mmu_dat_reg is std_logic_vector (DAT_AHI_BIT downto 0);
   
   subtype  MMU_idx_bits is std_logic_vector(MMU_CAPACITY_BITS-1 downto 0);
@@ -207,6 +209,8 @@ package p_MEMORY is
   constant tag_ones  : std_logic_vector(VABITS-1 downto PAGE_SZ_BITS+1) := (others => '1');
   constant tag_mask  : reg32 := tag_ones & tag_zeros;
 
+
+  -- physical addresses for 8 ROM pages
   
   constant x_ROM_PPN_0 : reg32 := std_logic_vector(to_signed(INST_BASE_ADDR + 0*PAGE_SZ, 32));
   constant x_ROM_PPN_1 : reg32 := std_logic_vector(to_signed(INST_BASE_ADDR + 1*PAGE_SZ, 32));
@@ -242,7 +246,8 @@ package p_MEMORY is
    x_ROM_PPN_7(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
 
 
-
+  -- physical addresses for 8 ROM pages
+  
   constant x_RAM_PPN_0 : reg32 := std_logic_vector(to_signed(DATA_BASE_ADDR + 0*PAGE_SZ, 32));
   constant x_RAM_PPN_1 : reg32 := std_logic_vector(to_signed(DATA_BASE_ADDR + 1*PAGE_SZ, 32));
   constant x_RAM_PPN_2 : reg32 := std_logic_vector(to_signed(DATA_BASE_ADDR + 2*PAGE_SZ, 32));
@@ -277,6 +282,8 @@ package p_MEMORY is
    x_RAM_PPN_7(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
 
 
+  -- physical addresses for 2 pages reserved for I/O devices
+  
   constant x_IO_PPN_0 : reg32 := std_logic_vector(to_signed(IO_BASE_ADDR + 0*PAGE_SZ, 32));
   constant x_IO_PPN_1 : reg32 := std_logic_vector(to_signed(IO_BASE_ADDR + 1*PAGE_SZ, 32));
 

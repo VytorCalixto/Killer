@@ -494,8 +494,8 @@ begin  -- TB
   not_waiting <= (inst_wait and data_wait); --  and io_wait);
 
   -- irq <= b"000000"; -- NO interrupt requests
-  irq <= b"0000" & uart_irq & counter_irq; -- uart+counter interrupts
-  -- irq <= b"00000" & counter_irq; -- counter interrupts
+  irq <= uart_irq & counter_irq & b"0000"; -- uart+counter interrupts
+  -- irq <= counter_irq & b"00000"; -- counter interrupts
   nmi <= '0'; -- input port to TB
 
   

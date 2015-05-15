@@ -38,18 +38,13 @@ void myprint(int numbers[], int n);
 
 void main() {
 
-int temp[NUM_ITEMS];
-
-#ifdef cMIPS
-  int *buf = (int *)x_DATA_BASE_ADDR;
-#else
+  int temp[NUM_ITEMS];
   int buf[NUM_ITEMS];
-#endif
 
   int *ptr = buf;
   unsigned int i, m_w, m_z;
 
-  // from wikipedia
+  // generate random numbers to sort -- from wikipedia
   m_w = 17;    /* must not be zero, nor 0x464fffff */
   m_z = 31;    /* must not be zero, nor 0x9068ffff */
 

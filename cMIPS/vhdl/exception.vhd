@@ -188,8 +188,6 @@ entity reg_excp_MM_WB is
        WB_can_trap:   out reg2;
        MM_excp_type:  in  exception_type;
        WB_excp_type:  out exception_type;
-       MM_PC:         in  reg32;
-       WB_PC:         out reg32;
        MM_cop0_LLbit: in  std_logic;
        WB_cop0_LLbit: out std_logic;
        MM_abort:      in  boolean;
@@ -212,7 +210,6 @@ begin
       if ld = '0' then
         WB_excp_type  <= MM_excp_type  ;
         WB_can_trap   <= MM_can_trap   ;
-        WB_PC         <= MM_PC         ;
         WB_cop0_LLbit <= MM_cop0_LLbit ;
         WB_abort      <= MM_abort      ;
         WB_cop0_a_c   <= MM_cop0_a_c   ;

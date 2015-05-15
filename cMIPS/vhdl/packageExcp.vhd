@@ -29,19 +29,20 @@ package p_EXCEPTION is
                           exBREAK, exTRAP, exSYSCALL,  -- 8
                           exRESV_INSTR, exWAIT,  -- 10
                           IFaddressError, MMaddressErrorLD, MMaddressErrorST, --13
-                          exTLBrefill, exTLBrefillWR,  -- 15
-                          exTLBdblFault, exTLBinval, exTLBmod, -- 18
-                          exOvfl,       -- 19
-                          exLL,exSC,    -- 20,21  these are handled by COP0
-                          exEHB,        -- 22
-                          exTLBP, exTLBR, exTLBWI, exTLBWR,  -- 26
-                          exDERET,  -- 27
+                          exTLBrefillIF, exTLBrefillRD, exTLBrefillWR,  -- 16
+                          exTLBdblFaultIF, exTLBdblFaultRD, exTLBdblFaultWR, -- 19
+                          exTLBinvalIF, exTLBinvalRD, exTLBinvalWR,  -- 22
+                          exTLBmod, exOvfl,  -- 24
+                          exLL,exSC,    -- 25,26  these are handled by COP0
+                          exEHB,        -- 27
+                          exTLBP, exTLBR, exTLBWI, exTLBWR,  -- 31
+                          exDERET,  -- 32
                           invalid_exception);
 
   attribute enum_encoding of exception_type : type is
-    "000000 000001 000010 000011 000100 000101 000110 000111 001000 001001 001010 001011 001100 001101 001110 001111 010000 010001 010010 010011 010100 010101 010110 010111 011000 011001 011010 011011 011100";
+    "000000 000001 000010 000011 000100 000101 000110 000111 001000 001001 001010 001011 001100 001101 001110 001111 010000 010001 010010 010011 010100 010101 010110 010111 011000 011001 011010 011011 011100 011101 011110 011111 100000 100001";
 
---  011101 011110 011111 100000 100001 100010";
+--   100010";
 
 
   

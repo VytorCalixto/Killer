@@ -7,8 +7,8 @@
 	.set M_StatusIEn,0x0000ff09     # STATUS.intEn=1, user mode
 	
 	#----------------------------------------------------------------
-	# interrupt handler for external counter attached to IP2=HW0
-	# Counter address -- see vhdl/packageMemory.vhd
+	# interrupt handler for external counter attached to IP5=HW3
+	# for extCounter address -- see vhdl/packageMemory.vhd
 
 	.bss
 	.align  2
@@ -65,7 +65,7 @@ extCounter:
 
 	
 	#----------------------------------------------------------------
-	# interrupt handler for UART attached to IP3=HW1
+	# interrupt handler for UART attached to IP6=HW4
 
 	.bss 
         .align  2
@@ -80,7 +80,7 @@ extCounter:
 	.global nrx,ntx
 	.comm   nrx 4                  # characters in RX_queue
 	.comm   ntx 4                  # spaces left in TX_queue
-        .comm   _uart_buff 16*4        # registers to be saved here
+        .comm   _uart_buff 16*4        # up to 16 registers to be saved here
 
 	.set UART_rx_irq,0x08
 	.set UART_tx_irq,0x10
@@ -90,7 +90,8 @@ extCounter:
 	.global UARTinterr
 	.ent    UARTinterr
 
-	# _uart_buff[0]=status, [1]=data_inp, [2]=new, [3]=$a0, [4]=$a1
+	# _uart_buff[0]=UARTstatus, [1]=UARTcontrol, [2]=data_inp, [3]=new,
+	#           [4]=$ra, [5]=$a0, [6]=$a1, [7]=$a2, [8]=$a3
 	
 UARTinterr:
 	lui   $k0, %hi(HW_uart_addr)
@@ -168,7 +169,7 @@ enableInterr:
 	ori   $v0, $v0, 1           #   and enable interrupts
 	mtc0  $v0, cop0_STATUS
 	nop
-	jr $ra                      # return updated STATUS
+	jr    $ra                   # return updated STATUS
 	nop
 	.end enableInterr
 
@@ -179,24 +180,24 @@ disableInterr:
 	and   $v0, $v0, $v1         # -2 = 0xffff.fffe
 	mtc0  $v0, cop0_STATUS
 	nop
-	jr $ra                      # return updated STATUS
+	jr    $ra                   # return updated STATUS
 	nop
 	.end disableInterr
 	#----------------------------------------------------------------
 
 
 	#----------------------------------------------------------------	
-	# delays processing by approx 4*$a4 processor cycles
+	# delays processing by approx 4*$a0 processor cycles
 	.text
 	.set    noreorder
 	.global cmips_delay
 	.ent    cmips_delay
 cmips_delay:
-	addiu $4, $4, -1
+	addiu $a0, $a0, -1
         nop
-        bne $4, $zero, cmips_delay
+        bne   $a0, $zero, cmips_delay
         nop
-        jr $ra
+        jr    $ra
         nop
 	.end    cmips_delay
 	#----------------------------------------------------------------
