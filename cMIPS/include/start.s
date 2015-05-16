@@ -17,13 +17,17 @@
 	# initialize SP: ramTop-8
 _start: li   $sp,(x_DATA_BASE_ADDR+x_DATA_MEM_SZ-8)
 
-	# set STATUS, cop0, hw interrupt IRQ7,IRQ6,IRQ5 enabled
+	# set STATUS, cop0, hw interrupt IRQ7,IRQ6,IRQ5 enabled, user mode
         li   $k0, 0x1000e001
         mtc0 $k0, cop0_STATUS
- 
+
+	# pin down first two MMU entries: ROM[0] and I/O
+	li   $k0, 2
+	mtc0 $k0, cop0_Wired
+	
 	nop
 	jal main  # on returning from main(), MUST go into exit()
-	nop       #  to stop the simulation.
+	nop       #   to stop the simulation.
 exit:	
 _exit:	nop	  # flush pipeline
 	nop
@@ -52,13 +56,9 @@ _exit:	nop	  # flush pipeline
 	.ent _excp_0000
 excp_0000:
 _excp_0000:
-        mfc0 $k0, cop0_STATUS
-	j nmi_reset_handler
-	nop
-	#excp_0000ret:
-	#	li   $k0, 0x1000ff01   # enable interrupts, user mode
-	#       mtc0 $k0, cop0_STATUS
-	#	eret
+	# li   $k0, 0x1000ff01   # enable interrupts, user mode
+	# mtc0 $k0, cop0_STATUS
+	# eret
 
 	#----------------------------------------------------------------
 	# handler for NMI or soft-reset -- simply abort simulation
@@ -115,7 +115,7 @@ _excp_0180:
         mfc0 $k0, cop0_CAUSE
 	sw   $k0, 0*4($k1)
 	
-	andi $k0, $k0, 0x3f    # keep only the first 16 ExceptionCode & b"00"
+	andi $k0, $k0, 0x3f    # keep only the first 16 ExceptionCodes & b"00"
 	sll  $k0, $k0, 1       # displacement in vector is 8 bytes
 	lui  $k1, %hi(excp_tbl)
         ori  $k1, $k1, %lo(excp_tbl)
@@ -136,9 +136,9 @@ excp_tbl: # see Table 8-25, pg 95,96
 	j h_TLBS # 3
 	nop
 
-	wait 0x04  # 4 AdEL addr error      -- abort simulation
+	wait 0x04  # 4 AdEL addr error     -- abort simulation
 	nop
-	wait 0x05  # 5 AdES addr error      -- abort simulation
+	wait 0x05  # 5 AdES addr error     -- abort simulation
 	nop
 	wait 0x06  # 6 IBE addr error      -- abort simulation
 	nop
@@ -163,21 +163,21 @@ excp_tbl: # see Table 8-25, pg 95,96
 	j h_trap  # 13 trap
 	nop
 	
-	wait 0x14 # reserved, should never get here -- abort simulation
+	wait 0x14 # reserved, should never get here     -- abort simulation
 	nop
 	
 	wait 0x15 # PF exception, should never get here -- abort simulation
 	nop
 
-h_Mod:	
-h_TLBL:		
+h_Mod:
+h_TLBL:
 h_TLBS:	
 h_syscall:
-h_breakpoint:	
-h_RI:	
-h_CpU:	
-h_Ov:	
-h_trap:	
+h_breakpoint:
+h_RI:
+h_CpU:
+h_Ov:
+h_trap:
 	
 excp_0180ret:
 	lui  $k1, %hi(_excp_saves) # Read previous contents of STATUS
@@ -199,10 +199,10 @@ excp_0180ret:
 	##===============================================================
 	## interrupt handlers at exception vector 0200
 	##
-	# name all handlers here
-	.extern countCompare  # IRQ7 = hwIRQ5, see vhdl/tb_cMIPS.vhd
-	.extern UARTinterr    # IRQ6 - hwIRQ4
-	.extern extCounter    # IRQ5 - hwIRQ3
+	# declare all handlers here, these must be in file handlers.s
+	.extern countCompare  # IRQ7 = hwIRQ5, Cop0 counter
+	.extern UARTinterr    # IRQ6 - hwIRQ4, see vhdl/tb_cMIPS.vhd
+	.extern extCounter    # IRQ5 - hwIRQ3, see vhdl/tb_cMIPS.vhd
 
 	.set M_CauseIM,0x0000ff00   # keep bits 15..8 -> IM = IP
 	.set M_StatusIEn,0x0000ff01 # user mode, enable all interrupts
@@ -214,11 +214,11 @@ excp_0180ret:
 excp_0200:
 _excp_0200:
 	mfc0 $k0, cop0_CAUSE
-	andi $k0, $k0, M_CauseIM  # Keep only IP bits from Cause
+	andi $k0, $k0, M_CauseIM   # Keep only IP bits from Cause
 	mfc0 $k1, cop0_STATUS
-	and  $k0, $k0, $k1        # and mask with IM bits 
+	and  $k0, $k0, $k1         # and mask with IM bits 
 
-	srl  $k0, $k0, 11	  # keep only 3 MS bits of IP (irq7..5)
+	srl  $k0, $k0, 11	   # keep only 3 MS bits of IP (irq7..5)
 	lui  $k1, %hi(handlers_tbl) # plus displacement in j-table of 8 bytes
 	ori  $k1, $k1, %lo(handlers_tbl)
 	add  $k1, $k1, $k0

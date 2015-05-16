@@ -1504,7 +1504,7 @@ begin
                   else MM_wreg;
 
 
-  -- ------------------------------------------------------------------
+  -- ----------------------------------------------------------------------
   PIPESTAGE_MM_WB: reg_MM_WB
     port map (clk,rst, MM_WB_ld, 
               MM_a_c,WB_a_c, MM_wreg_cond,WB_wreg, MM_muxC,WB_muxC,
@@ -1513,7 +1513,7 @@ begin
               MM_result(1 downto 0),WB_addr2, MM_mem_t(3 downto 2),WB_mem_t,
               MM_pc_p8,WB_pc_p8);
 
-  -- WRITE BACK -------------------------------------------
+  -- WRITE BACK -----------------------------------------------------------
 
   
   -- merge unaligned loads  LWL,LWR
@@ -1674,14 +1674,15 @@ begin
 
 
  
-  is_exception <=  TLB_excp_type when tlb_exception else
+  is_exception <=  TLB_excp_type  when tlb_exception       else
                    MM_excp_type   when addrError           else
                    exOvfl         when MM_ex_trapped = '1' else
                    IFaddressError when EX_PC_abort         else
                    EX_exception;
 
   exception_num <= exception_type'pos(is_exception); -- for debugging only
-  
+
+  -- STATUS -- pg 79 -- cop0_12 --------------------
   COP0_DECODE_EXCEPTION_AND_UPDATE_STATUS:
   process (EX_a_rt, is_exception, EX_trap_instr, 
            EX_cop0_reg, EX_cop0_sel, EX_nmi, EX_interrupt,EX_int_req,
@@ -1795,12 +1796,13 @@ begin
         EX_mfc0 <= '1';
 
       when exERET =>            -- exception return
+        newSTATUS(STATUS_EXL) := '0';   -- leave exception level
         i_update     := '1';
         i_update_r   := cop0reg_STATUS;
         i_stall      := '0';            -- do not stall
         i_excp_PCsel := PCsel_EXC_EPC;  -- PC <= EPC
         i_nullify    := '1';            -- nullify instructions in IF,RF
-        newSTATUS(STATUS_EXL) := '0';   -- leave exception level
+
         
       when exTRAP | exSYSCALL | exBREAK =>   -- trap instruction
         i_stall    := '0';
@@ -1929,6 +1931,8 @@ begin
         end case;
         newSTATUS(STATUS_EXL) := '1';       -- at exception level
         newSTATUS(STATUS_IE)  := '0';       -- disable interrupts
+        i_update        := '1';
+        i_update_r      := cop0reg_STATUS;
         i_excp_PCsel := PCsel_EXC_0000;     -- PC <= exception_0000
         i_epc_update := '0';
 
@@ -1946,28 +1950,30 @@ begin
           when exTLBinvalRD | exTLBdblFaultRD =>
             ExcCode <= cop0code_TLBL;
             if EX_is_delayslot = '1' then   -- instr is in delay slot
-              i_epc_source := b"010";       -- EX_PC, re-execute branch/jump
+              i_epc_source := b"011";       -- MM_PC, re-execute branch/jump
             else
-              i_epc_source := b"001";       -- RF_PC
+              i_epc_source := b"010";       -- EX_PC
             end if;
           when exTLBinvalWR | exTLBdblFaultWR =>
             ExcCode <= cop0code_TLBS;
             if EX_is_delayslot = '1' then   -- instr is in delay slot
-              i_epc_source := b"010";       -- EX_PC, re-execute branch/jump
+              i_epc_source := b"011";       -- MM_PC, re-execute branch/jump
             else
-              i_epc_source := b"001";       -- RF_PC
+              i_epc_source := b"010";       -- EX_PC
             end if;
           when exTLBmod =>
             ExcCode <= cop0code_Mod;
             if EX_is_delayslot = '1' then   -- instr is in delay slot
-              i_epc_source := b"010";       -- EX_PC, re-execute branch/jump
+              i_epc_source := b"011";       -- MM_PC, re-execute branch/jump
             else
-              i_epc_source := b"001";       -- RF_PC
+              i_epc_source := b"010";       -- EX_PC
             end if;
           when others => null;
         end case;
         newSTATUS(STATUS_EXL) := '1';       -- at exception level
         newSTATUS(STATUS_IE)  := '0';       -- disable interrupts
+        i_update        := '1';
+        i_update_r      := cop0reg_STATUS;
         i_excp_PCsel := PCsel_EXC_0180;     -- PC <= exception_0180
         i_epc_update := '0';
 
@@ -2072,15 +2078,17 @@ begin
   status_update <= '0' when (update = '1' and update_reg = cop0reg_STATUS and
                              not_stalled = '1')
                    else '1';
-  
+
+  -- STATUS -- pg 79 -- cop0_12 --------------------
   COP0_STATUS: register32 generic map (RESET_STATUS)
     port map (clk, rst, status_update, STATUSinp, STATUS);
 
 
-  -- CAUSE ------------------------------
-  COP0_COMPUTE_CAUSE:
-  process(rst, update,update_reg, EX_int_req, ExcCode, cop0_inp,
-          EX_is_delayslot, count_eq_compare,count_enable, CAUSE)
+  -- CAUSE -- pg 92-- cop0_13 --------------------------
+  COP0_COMPUTE_CAUSE: process(rst, update,update_reg,
+                              EX_int_req, ExcCode, cop0_inp,
+                              EX_is_delayslot,
+                              count_eq_compare,count_enable, CAUSE)
     variable newCAUSE : reg32;
   begin
 
@@ -2139,7 +2147,7 @@ begin
     port map (clk, rst, cause_update, CAUSEinp, CAUSE);
 
 
-  -- EPC -- pg 97 ---------------------
+  -- EPC -- pg 97 -- cop0_14 -------------------
   with epc_source select EPCinp <=
     PC              when b"000",        -- instr fetch exception
     RF_PC           when b"001",        -- invalid instr exception
@@ -2152,7 +2160,7 @@ begin
     port map (clk, rst, epc_update, EPCinp, EPC);
 
 
-  -- COUNT & COMPARE -- pg 75, 78 ----------------- not_stalled = '1'
+  -- COUNT & COMPARE -- pg 75, 78 -----------------
   compare_update <= '0' when (update = '1' and update_reg = cop0reg_COMPARE)
                     else '1';
   
@@ -2249,7 +2257,7 @@ begin
     port map (clk, rst, index_update, index_inp, INDEX);
 
 
-  -- MMU Wired -- cop0_6 -- pg 72 ----------------
+  -- MMU Wired -- pg 72 -- cop0_6 ----------------
 
   wired_update <= '0' when (update = '1' and update_reg = cop0reg_Wired)
                   else '1';
@@ -2301,13 +2309,13 @@ begin
 
   -- MMU Context -- pg 67 -- cop0_4 ------------
 
-  assert true                          -- DEBUG
-    report "pgSz " & integer'image(PAGE_SZ_BITS) &
-           " va-1 " & integer'image(VABITS-1) &
-           " pg+1 " & integer'image(PAGE_SZ_BITS+1) &
-           " add " & integer'image(VABITS-1 - PAGE_SZ_BITS+1) &
-           " lef " & integer'image( PC(VABITS-1 downto PAGE_SZ_BITS+1)'left )&
-           " rig " & integer'image( PC(VABITS-1 downto PAGE_SZ_BITS+1)'right );
+  -- assert false -- true                          -- DEBUG
+  --   report "pgSz " & integer'image(PAGE_SZ_BITS) &
+  --          " va-1 " & integer'image(VABITS-1) &
+  --          " pg+1 " & integer'image(PAGE_SZ_BITS+1) &
+  --          " add " & integer'image(VABITS-1 - PAGE_SZ_BITS+1) &
+  --          " lef " & integer'image( PC(VABITS-1 downto PAGE_SZ_BITS+1)'left )&
+  --          " rig " & integer'image( PC(VABITS-1 downto PAGE_SZ_BITS+1)'right );
 
   context_upd_pte <= '0' when (update = '1' and update_reg = cop0reg_Context)
                      else '1';
@@ -2325,7 +2333,7 @@ begin
   Context(3 downto 0) <= b"0000";
 
   
-  -- MMU Pagemask -- cop0_5 -- pg 68 ----------- 
+  -- MMU Pagemask -- pg 68 -- cop0_5 ----------- 
   -- page size is fixed = 4k, thus PageMask is not register
   
   -- pageMask_update <= '0' when (update='1' and update_reg=cop0reg_PageMask)
@@ -2393,6 +2401,7 @@ begin
       end if;
       
     elsif hit_mm then
+
       if (EX_aVal = '0' and hit_mm_v = '0') then      -- check for TLBinvalid
         if EX_aVal = '0' then
           TLB_excp_type <= exTLBinvalWR;

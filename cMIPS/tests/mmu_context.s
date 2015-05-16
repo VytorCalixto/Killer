@@ -1,7 +1,7 @@
 	##
 	## Test the Context register.
 	##
-	## Write to the upper 9 bits (PTEbase) then read it back ;
+	## Write to the upper 9 bits (PTEbase) then read it back
 	## 
 	## Cause an exception by referencing an unmapped address and
 	##   then check BadVPN2
@@ -67,8 +67,17 @@ _start:
         .set noreorder
         .set noat
 
+        ## EntryHi holds VPN2(31..13), probe the TLB for the offending entry
+	
 excp:
-_excp:	li   $30, 'e'
+_excp:	tlbp            # probe for the guilty entry
+        tlbr            # it will surely hit, use Index to point at it
+        mfc0 $k1, cop0_EntryLo0
+        ori  $k1, $k1, 0x0002   # make V=1
+        mtc0 $k1, cop0_EntryLo0
+        tlbwi                   # write entry back
+
+	li   $30, 'e'
         sw   $30, x_IO_ADDR_RANGE($31)
         li   $30, 'x'
         sw   $30, x_IO_ADDR_RANGE($31)

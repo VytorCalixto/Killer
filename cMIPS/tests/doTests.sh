@@ -72,7 +72,8 @@ a_BHW="lbsb lhsh lwsw lwswIncr swlw lwl_lwr"
 a_MEM="lwSweepRAM"
 a_CTR="teq_tne tlt_tlti tltu_tgeu eiDI ll_sc overflow"
 a_COP="mtc0CAUSE2 mtc0EPC syscall break mfc0CONFIG badVAddr badVAddrMM"
-a_MMU="mmu_index mmu_tlbwi mmu_tlbp mmu_tlbwr mmu_context mmu_refill"
+a_MMU="mmu_index mmu_tlbwi mmu_tlbp mmu_tlbwr mmu_context"
+a_EXC="mmu_refill mmu_inval mmu_mod mmu_double"
 
 ## these tests MUST be run with FAKE CACHES
 # a_IOs="kbd7seg" 
@@ -87,7 +88,7 @@ rm -f *.simout *.elf
 stoptime=20ms
 
 if [ 0 = 0 ] ; then
-    for F in $(echo $a_FWD $a_CAC $a_BEQ $a_FUN $a_OTH $a_BHW $a_MEM $a_CTR $a_COP $a_MMU $a_IOs);
+    for F in $(echo $a_FWD $a_CAC $a_BEQ $a_FUN $a_OTH $a_BHW $a_MEM $a_CTR $a_COP $a_MMU $a_EXC $a_IOs);
     do
 	$bin/assemble.sh ${F}.s
 	${simulator} --ieee-asserts=disable --stop-time=$stoptime \

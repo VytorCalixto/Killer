@@ -18,7 +18,7 @@
 	.set HW_lcd_addr,    (x_IO_BASE_ADDR + 11 * x_IO_ADDR_RANGE)
 
 	# see vhdl/packageExcp.vhd for addresses
-	.set x_EXCEPTION_0000,0x00000080
+	.set x_EXCEPTION_0000,0x00000060
 	.set x_EXCEPTION_0100,0x000000A0
 	.set x_EXCEPTION_0180,0x000000C0
 	.set x_EXCEPTION_0200,0x00000200

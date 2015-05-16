@@ -1,5 +1,5 @@
 	##
-	## Cause a TLB miss on a fetch, then copy a mapping from page table
+	## Cause a TLB miss on a fetch, refill handler causes double fault
 	##
 	##
 	## EntryHi     : EntryLo0           : EntryLo1
@@ -49,31 +49,64 @@ _start:	li   $k0, 0x10000000
         ## exception vector_0000 TLBrefill, from See MIPS Run pg 145
         ##
         .org x_EXCEPTION_0000,0
-        .ent _excp
+        .ent _excp_100
         .set noreorder
         .set noat
 
-excp:
-_excp:  mfc0 $k1, cop0_Context
+_excp_100:  mfc0 $k1, cop0_Context
         lw   $k0, 0($k1)           # k0 <- TP[Context.lo]
         lw   $k1, 8($k1)           # k1 <- TP[Context.hi]
         mtc0 $k0, cop0_EntryLo0    # EntryLo0 <- k0 = even element
         mtc0 $k1, cop0_EntryLo1    # EntryLo1 <- k1 = odd element
         ehb
         tlbwr                      # update TLB
+	li   $30, 't'
+	sw   $30, x_IO_ADDR_RANGE($20)	
+	li   $30, 'h'
+	sw   $30, x_IO_ADDR_RANGE($20)	
 	li   $30, 'e'
 	sw   $30, x_IO_ADDR_RANGE($20)	
-	li   $30, 'x'
-	sw   $30, x_IO_ADDR_RANGE($20)	
-	li   $30, 'c'
-	sw   $30, x_IO_ADDR_RANGE($20)	
-	li   $30, 'p'
+	li   $30, 'n'
 	sw   $30, x_IO_ADDR_RANGE($20)	
 	li   $30, '\n'
 	sw   $30, x_IO_ADDR_RANGE($20)	
 	eret
-        .end _excp
+        .end _excp_100
 
+
+	##
+        ##================================================================
+        ## general exception vector_0180
+        ##
+        .org x_EXCEPTION_0180,0
+        .ent _excp_180
+        .set noreorder
+        .set noat
+
+        ## EntryHi holds VPN2(31..13), probe the TLB for the offending entry
+_excp_180: tlbp         # probe for the guilty entry
+        nop
+        tlbr            # it will surely hit, just use Index to point at it
+        mfc0 $k1, cop0_EntryLo0
+        ori  $k1, $k1, 0x0002   # make V=1
+        mtc0 $k1, cop0_EntryLo0
+        tlbwi                   # write entry back
+
+        li   $30, 'h'
+        sw   $30, x_IO_ADDR_RANGE($20)
+        li   $30, 'e'
+        sw   $30, x_IO_ADDR_RANGE($20)
+        li   $30, 'r'
+        sw   $30, x_IO_ADDR_RANGE($20)
+        li   $30, 'e'
+        sw   $30, x_IO_ADDR_RANGE($20)
+        li   $30, '\n'
+        sw   $30, x_IO_ADDR_RANGE($20)
+
+        eret
+        .end _excp_180
+
+	
 	##
         ##================================================================
         ## normal code starts here
@@ -146,6 +179,29 @@ main:	la   $20, x_IO_BASE_ADDR
 	mtc0 $8, cop0_EntryHi
 
 	tlbwi		    # and write it back to TLB
+
+
+	##
+	## make invalid TLB entry mapping the page table
+	##
+        ## read tlb[4] (1st RAM mapping) and clear the V bit
+        li $5, 4
+        mtc0 $5, cop0_Index
+
+        tlbr
+
+        mfc0 $6, cop0_EntryLo0
+
+        addi $7, $zero, -3      # 0xffff.fffd = 1111.1111.1111.1011
+        and  $8, $7, $6         # clear D bit
+
+        mtc0 $8, cop0_EntryLo0
+
+        tlbwi                   # write entry back to TLB
+
+	nop
+	nop
+	nop
 
 	## cause a TLB miss
 
