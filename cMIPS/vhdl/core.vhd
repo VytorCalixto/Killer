@@ -158,7 +158,7 @@ architecture rtl of core is
   signal exception,EX_exception,is_exception : exception_type := exNOP;
   signal ExcCode : reg5 := cop0code_NULL;
   signal exception_num,exception_dec,TLB_excp_num : integer; -- for debugging only
-  signal next_instr_in_delay_slot,EX_is_delayslot : std_logic;
+  signal next_instr_in_delay_slot,EX_is_delayslot, is_delayslot : std_logic;
   signal cop0_sel, EX_cop0_sel, epc_source : reg3;
   signal cop0_reg,EX_cop0_reg : reg5;
   signal cop0_inp, RF_cop0_val,EX_cop0_val,MM_cop0_val,WB_cop0_val : reg32;
@@ -204,7 +204,6 @@ architecture rtl of core is
   signal tlb_dat4_1, tlb_dat5_1, tlb_dat6_1, tlb_dat7_1 : mmu_dat_reg;
 
   signal tlb_entryLo0, tlb_entryLo1, phy_i_addr, phy_d_addr : reg32;
-  signal tlb_context_inp : std_logic_vector(VABITS-1 downto PAGE_SZ_BITS+1);
   
   -- other components ------------ 
   
@@ -1669,6 +1668,9 @@ begin
 
   -- EX execute exception ---------------------------------------------
 
+  U_HOLD_DELAY_SLOT: FFD port map (clk,rst,'1',EX_is_delayslot, is_delayslot);
+
+  
   -- check for overflow in EX, send it to MM for later processing
   ex_trapped <= '1' when (EX_can_trap = b"10" and ovfl = '1') else '0';
 
@@ -1686,7 +1688,7 @@ begin
   COP0_DECODE_EXCEPTION_AND_UPDATE_STATUS:
   process (EX_a_rt, is_exception, EX_trap_instr, 
            EX_cop0_reg, EX_cop0_sel, EX_nmi, EX_interrupt,EX_int_req,
-           next_instr_in_delay_slot, EX_is_delayslot,
+           next_instr_in_delay_slot, EX_is_delayslot, is_delayslot,
            cop0_inp, EX_tr_is_equal, EX_tr_less_than,
            INDEX, RANDOM, EntryLo0, EntryLo1, CONTEXT, PAGEMASK, WIRED,
            EntryHi, COUNT, COMPARE, STATUS, CAUSE, EPC, BadVAddr,
@@ -1891,12 +1893,12 @@ begin
           ExcCode <= cop0code_AdEL;
         end if;
         if is_exception = IFaddressError then
-          i_nullify       := '1';       -- nullify instructions in IF,RF
+          i_nullify := '1';             -- nullify instructions in IF,RF
         end if;
-        i_epc_source    := b"010";      -- bad address is in EXCP_EX_PC
+        i_epc_source := b"010";         -- bad address is in EXCP_EX_PC
         
       when exEHB =>                     -- stall processor to clear hazards
-        i_stall    := '1';
+        i_stall := '1';
 
 
       when exTLBP | exTLBR | exTLBWI | exTLBWR =>  -- TLB access
@@ -1915,17 +1917,17 @@ begin
             end if;
           when exTLBrefillRD =>
             ExcCode <= cop0code_TLBL;
-            if EX_is_delayslot = '1' then   -- instr is in delay slot
-              i_epc_source := b"010";       -- EX_PC, re-execute branch/jump
+            if is_delayslot = '1' then      -- instr is in delay slot
+              i_epc_source := b"011";       -- EX_PC, re-execute branch/jump
             else
-              i_epc_source := b"001";       -- RF_PC
+              i_epc_source := b"010";       -- RF_PC
             end if;
           when exTLBrefillWR =>
             ExcCode <= cop0code_TLBS;
-            if EX_is_delayslot = '1' then   -- instr is in delay slot
-              i_epc_source := b"010";       -- EX_PC, re-execute branch/jump
+            if is_delayslot = '1' then      -- instr is in delay slot
+              i_epc_source := b"011";       -- EX_PC, re-execute branch/jump
             else
-              i_epc_source := b"001";       -- RF_PC
+              i_epc_source := b"010";       -- RF_PC
             end if;
           when others => null;
         end case;
@@ -1949,21 +1951,21 @@ begin
             end if;
           when exTLBinvalRD | exTLBdblFaultRD =>
             ExcCode <= cop0code_TLBL;
-            if EX_is_delayslot = '1' then   -- instr is in delay slot
+            if is_delayslot = '1' then      -- instr is in delay slot
               i_epc_source := b"011";       -- MM_PC, re-execute branch/jump
             else
               i_epc_source := b"010";       -- EX_PC
             end if;
           when exTLBinvalWR | exTLBdblFaultWR =>
             ExcCode <= cop0code_TLBS;
-            if EX_is_delayslot = '1' then   -- instr is in delay slot
+            if is_delayslot = '1' then      -- instr is in delay slot
               i_epc_source := b"011";       -- MM_PC, re-execute branch/jump
             else
               i_epc_source := b"010";       -- EX_PC
             end if;
           when exTLBmod =>
             ExcCode <= cop0code_Mod;
-            if EX_is_delayslot = '1' then   -- instr is in delay slot
+            if is_delayslot = '1' then      -- instr is in delay slot
               i_epc_source := b"011";       -- MM_PC, re-execute branch/jump
             else
               i_epc_source := b"010";       -- EX_PC
@@ -2320,15 +2322,19 @@ begin
   context_upd_pte <= '0' when (update = '1' and update_reg = cop0reg_Context)
                      else '1';
 
-  MMU_ContextPTE: registerN generic map(9, ContextPTE_init)
+  -- MMU_ContextPTE: registerN generic map(9, ContextPTE_init)
+  --   port map (clk, rst, context_upd_pte,
+  --             cop0_inp(31 downto 23), Context(31 downto 23));
+  MMU_ContextPTE: registerN generic map(14, b"00000000000000")
     port map (clk, rst, context_upd_pte,
-              cop0_inp(31 downto 23), Context(31 downto 23));
+              cop0_inp(31 downto 18), Context(31 downto 18));
 
   context_upd_bad <= '0' when tlb_exception else '1';
-  tlb_context_inp <= tlb_excp_VA;
   
-  MMU_ContextBAD: registerN generic map(19, b"0000000000000000000")
-    port map (clk, rst, context_upd_bad, tlb_context_inp, Context(22 downto 4));
+  -- MMU_ContextBAD: registerN generic map(19, b"0000000000000000000")
+  --   port map (clk, rst, context_upd_bad, tlb_context_inp, Context(22 downto 4));
+  MMU_ContextBAD: registerN generic map(14, b"00000000000000")
+    port map (clk, rst, context_upd_bad, tlb_excp_VA(VA_HI_BIT-5 downto VA_LO_BIT), Context(17 downto 4));
 
   Context(3 downto 0) <= b"0000";
 
@@ -2403,7 +2409,7 @@ begin
     elsif hit_mm then
 
       if (EX_aVal = '0' and hit_mm_v = '0') then      -- check for TLBinvalid
-        if EX_aVal = '0' then
+        if EX_wrmem = '0' then
           TLB_excp_type <= exTLBinvalWR;
         else
           TLB_excp_type <= exTLBinvalRD;
@@ -2725,7 +2731,7 @@ begin
     port map (clk, rst, tlb_tag6_updt, tlb_tag_inp, tlb_tag6);
 
   MMU_DAT6_0: registerN generic map(DAT_REG_BITS, MMU_ini_dat_RAM6)  -- d=1,v=1,g=1
-    port map (clk, rst, tlb_dat6_updt, tlb_dat1_inp, tlb_dat6_0);
+    port map (clk, rst, tlb_dat6_updt, tlb_dat0_inp, tlb_dat6_0);
   MMU_DAT6_1: registerN generic map(DAT_REG_BITS, MMU_ini_dat_RAM7)  -- d=1,v=1,g=1
     port map (clk, rst, tlb_dat6_updt, tlb_dat1_inp, tlb_dat6_1);
 

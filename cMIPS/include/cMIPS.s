@@ -3,7 +3,7 @@
         .set x_INST_BASE_ADDR,0x00000000
         .set x_INST_MEM_SZ,0x00004000
 
-        .set x_DATA_BASE_ADDR,0x04000000
+        .set x_DATA_BASE_ADDR,0x00040000
         .set x_DATA_MEM_SZ,0x00004000
 	
         .set x_IO_BASE_ADDR,0x0F000000

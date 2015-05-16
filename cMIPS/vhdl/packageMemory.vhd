@@ -42,7 +42,7 @@ package p_MEMORY is
   --  you may change the values, not names nor formatting              --
   constant x_INST_BASE_ADDR : reg32   := x"00000000";
   constant x_INST_MEM_SZ    : reg32   := x"00004000";  
-  constant x_DATA_BASE_ADDR : reg32   := x"04000000";  
+  constant x_DATA_BASE_ADDR : reg32   := x"00040000";  
   constant x_DATA_MEM_SZ    : reg32   := x"00004000";
   constant x_IO_BASE_ADDR   : reg32   := x"0F000000";
   constant x_IO_MEM_SZ      : reg32   := x"00002000";
@@ -294,7 +294,6 @@ package p_MEMORY is
    x_IO_PPN_1(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
 
   
-  -- constant mmu_PageMask : reg32 := x"00000000";  -- pg 68, 1k pages only
   constant mmu_PageMask : reg32 := x"00001800";  -- pg 68, 4k pages only
 
   

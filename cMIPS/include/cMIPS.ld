@@ -2,7 +2,7 @@ SECTIONS
 {
        . = 0x00000000; /* x_INST_BASE_ADDR */
        .text : { *(.text .text.*) }
-       . = 0x04000000; /* x_DATA_BASE_ADDR */
+       . = 0x00040000; /* x_DATA_BASE_ADDR */
        .data    : { *(.data .data.*) }
        .rodata  : { *(.rodata .rodata.*) }
        .rodata1 : { *(.rodata1) }

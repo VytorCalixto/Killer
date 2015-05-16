@@ -115,11 +115,21 @@ main:	la   $20, x_IO_BASE_ADDR
 	
 	## cause an exception by writing to that same page 
 	
-	la $10, 0xffffe000	# mask off non-VPN bits
+	la  $10, 0xffffe000	# mask off non-VPN bits
 	and $10, $10, $9
+	bne $10, $zero, dest	# cause exception at branch delay slot
+	sw  $1, 16($10)
 
-	sw $zero, 16($10)
+	li   $30, '@'
+	sw   $30, x_IO_ADDR_RANGE($20)
+	sw   $30, x_IO_ADDR_RANGE($20)
+	sw   $30, x_IO_ADDR_RANGE($20)
+	li   $30, '\n'
+	sw   $30, x_IO_ADDR_RANGE($20)
 
+	nop
+dest:	nop
+	
 	
 	li   $30, 'a'
 	sw   $30, x_IO_ADDR_RANGE($20)
