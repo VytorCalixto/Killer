@@ -2,6 +2,7 @@
 	.include "cMIPS.s"
 	.text
 	.align 2
+	.set noreorder
 	.global _start
 	.global _exit
 	.global exit
@@ -13,8 +14,9 @@
 _start: nop
 	li   $sp,(x_DATA_BASE_ADDR+x_DATA_MEM_SZ-8) # initialize SP: ramTop-8
         la   $k0, main
-        nop
         mtc0 $k0, cop0_EPC
+	li   $k1, 2
+        mtc0 $k1, cop0_Wired
         nop
         eret     # go into user mode, all else disabled
         nop
@@ -28,102 +30,143 @@ _exit:	nop	 # flush pipeline
 	nop
 	nop
 	.end _start
-	
-	.org x_EXCEPTION_0180,0 # exception vector_180 at 0x00000060
+
+	.org x_EXCEPTION_0180,0 # exception vector_180
 	.global _excp_180
-	.global excp_180
 	.ent _excp_180
-excp_180:	
 _excp_180:
-        mfc0  $k0, cop0_CAUSE
-	#sw    $k0, 0($15)       # print CAUSE = 0000.0030
-	#sw    $k0, 0($15)       # print CAUSE = 0000.0030
-	sw    $k0, 0($15)       # print CAUSE = 0000.0030
-	li    $k0, 0x18000302   #   disable interrupts
-	mtc0  $k0, cop0_STATUS  #   and return
-	nop
+
+        li   $30, 'o'
+        sw   $30, x_IO_ADDR_RANGE($15)
+        li   $30, 'v'
+        sw   $30, x_IO_ADDR_RANGE($15)
+        li   $30, 'e'
+        sw   $30, x_IO_ADDR_RANGE($15)
+        li   $30, 'r'
+        sw   $30, x_IO_ADDR_RANGE($15)
+        li   $30, 'f'
+        sw   $30, x_IO_ADDR_RANGE($15)
+        li   $30, 'l'
+        sw   $30, x_IO_ADDR_RANGE($15)
+        li   $30, 'o'
+        sw   $30, x_IO_ADDR_RANGE($15)
+        li   $30, 'w'
+        sw   $30, x_IO_ADDR_RANGE($15)
+        li   $30, '\n'
+        sw   $30, x_IO_ADDR_RANGE($15)
+
+	li    $k1, 0x18000008     # disable interrupts, go into user level
+
+        mfc0  $k0, cop0_CAUSE     # ovfl was in a delay slot?
+	srl   $k0, $k0, 31        #   YES: add 8 to EPC to skip offending add
+
+	mtc0  $k1, cop0_STATUS
+
+	beq   $k0, $zero, plus4
+	mfc0  $k1, cop0_EPC
+plus8:	j     return
+	addiu $k1, $k1, 8	  # fix EPC to jump over 2 instr: branch & add
+plus4:	addiu $k1, $k1, 4	  # fix EPC to jump over offending instruction
+	
+return: mtc0  $k1, cop0_EPC
 	eret
 	.end _excp_180
 
 
-	.org x_ENTRY_POINT,0    # normal code starts at 0x0000.0100
-main:	la $15,x_IO_BASE_ADDR
-	la $16,x_IO_BASE_ADDR+x_IO_ADDR_RANGE
+	#-----------------------------------------------------------------
+	.org x_ENTRY_POINT,0    # user code starts here
+main:	la $15, x_IO_BASE_ADDR
+	la $16, x_IO_BASE_ADDR+x_IO_ADDR_RANGE
 	li $17, '\n'
 
 	# signed overflow       
-	li  $3,0x7FFFFFFF	# positive +s positive -> positive
-	li  $4,0x00000001
-	add $5,$3,$4
+	li  $3, 0x7FFFFFFF	# positive +s positive -> positive
+	li  $4, 0x00000001
+	add $5, $3, $4
+	nop			# handler skips add on returning, otw loops
 	sw  $5, 0($15)		# ===exception=== 0x8000.0000 == negative
-
-	nop
-	sw $17, 0($16)
+	sw  $17, 0($16)
 	
-	# no overflow
-	li   $6,0xFFFFFFFe      # negative + positive -> no overflow
-	addi $7,$6,1
+	# add signed, no overflow
+	li   $6, 0xFFFFFFFe     # negative + positive -> no overflow
+	addi $7, $6, 3
+	nop
 	sw   $7, 0($15)		# 0xffff.ffff == negative
-
-	nop
-	sw $17, 0($16)
+	sw   $17, 0($16)
 	
 	# add unsigned, no overflow
-	li   $3,0x7FFFFFFF      # positive +u positive -> positive
-	li   $4,0x00000001
-	addu $5,$3,$4
+	li   $3, 0x7FFFFFFF     # positive +u positive -> positive
+	li   $4, 0x00000001
+	addu $5, $3, $4
+	nop
 	sw   $5, 0($15)		# 0x8000.0000 == unsigned positive
-
-	nop
-	sw $17, 0($16)
+	sw   $17, 0($16)
 	
 	# add unsigned, no overflow
-	li    $6,0xFFFFFFFe	# negative +u positive -> positive
-	addiu $7,$6,1
+	li    $6, 0xFFFFFFFe	# negative +u positive -> positive
+	addiu $7, $6, 3
+	nop
 	sw    $7, 0($15)	# 0xffff.ffff == unsigned positive
-
-	nop
-	sw $17, 0($16)
+	sw    $17, 0($16)
 	
-	# no overflow
-	li   $3,0xFFFFFFFF	# negative +s positive -> negative 
-	li   $4,0x00000001
-	add  $5,$3,$4
+	# add signed, no overflow
+	li   $3, 0xFFFFFFFF	# negative +s positive -> negative 
+	li   $4, 0x00000001
+	add  $5, $3, $4
+	nop
 	sw   $5, 0($15)		# 0x0000.0000
-
-	nop
-	sw $17, 0($16)
+	sw   $17, 0($16)
 	
-	# signed overflow
-	li   $6,0x80000000      # negative -s negative -> negative
-	addi $7,$6,-1
+	# add signed, overflow
+	li   $6, 0x80000000     # negative -s negative -> negative
+	addi $7, $6, -1
+	nop
 	sw   $7, 0($15)		# ===exception=== 0x7fff.ffff == positive
-
-	nop
-	sw $17, 0($16)
+	sw   $17, 0($16)
 	
-	# unsigned overflow
-	li   $6,0x80000000      # positive -u negative -> positive
-	addiu $7,$6,-1
-	sw   $7, 0($15)		# 0x7fff.ffff == positive
-
+	# add unsigned, no overflow
+	li    $6, 0x80000000    # positive -u negative -> positive
+	addiu $7, $6, -1
 	nop
-	sw $17, 0($16)
+	sw    $7, 0($15)	# 0x7fff.ffff == positive
+	sw    $17, 0($16)
 	
 	# no overflow, unsigned
-	li   $3,0xFFFFFFFF      # positive +u positive -> positive
-	li   $4,0x00000001
-	addu $5,$3,$4
-	sw   $5, 0($15)		# 0x0000.0000  ok since instr is an addU
-
+	li   $3, 0xFFFFFFFF     # positive +u positive -> positive
+	li   $4, 0x00000001
+	addu $5, $3, $4
 	nop
-	sw $17, 0($16)
+	sw   $5, 0($15)		# 0x0000.0000  ok since instr is an addU
+	sw   $17, 0($16)
 	
-	# signed overflow 
+	# add signed, overflow 
 	li    $6,0x7FFFFFFe	# positive +s positive -> positive
 	addi  $7,$6,2
-	sw    $7, 0($15)	# ===exception=== 0x8000.0000 == negative
-
 	nop
-end:	j exit
+	sw    $7, 0($15)	# ===exception=== 0x8000.0000 == negative
+	sw    $17, 0($16)
+
+	# signed, overflow, same as last, add is on a branch delay slot
+	li    $6,0x7FFFFFFe	# positive +s positive -> positive
+	nop			# remove stall on $6
+	beq   $6, $zero, there  
+	addi  $7,$6,2
+	nop			# handler will return here: EPC += 8
+	sw    $7, 0($15)	# ===exception=== 0x8000.0000 == negative
+	sw    $17, 0($16)
+
+	j exit
+	nop
+
+
+there:  li   $30, 'e'
+        sw   $30, x_IO_ADDR_RANGE($15)
+        li   $30, 'r'
+        sw   $30, x_IO_ADDR_RANGE($15)
+        li   $30, 'r'
+        sw   $30, x_IO_ADDR_RANGE($15)
+        li   $30, '\n'
+        sw   $30, x_IO_ADDR_RANGE($15)
 	
+end:	j exit
+	nop

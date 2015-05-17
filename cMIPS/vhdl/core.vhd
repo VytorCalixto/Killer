@@ -101,6 +101,8 @@ architecture rtl of core is
          MM_cop0_LLbit: out std_logic;
          addrError:     in  boolean;
          MM_abort:      out boolean;
+         EX_is_delayslot: in  std_logic;
+         MM_is_delayslot: out std_logic;
          EX_cop0_a_c:   in  std_logic_vector;
          MM_cop0_a_c:   out std_logic_vector;
          EX_cop0_val:   in  std_logic_vector;
@@ -117,10 +119,14 @@ architecture rtl of core is
          WB_can_trap:   out std_logic_vector;
          MM_excp_type:  in  exception_type;
          WB_excp_type:  out exception_type;
+         MM_PC:         in  std_logic_vector;
+         WB_PC:         out std_logic_vector;
          MM_cop0_LLbit: in  std_logic;
          WB_cop0_LLbit: out std_logic;
          MM_abort:      in  boolean;
          WB_abort:      out boolean;
+         MM_is_delayslot: in  std_logic;
+         WB_is_delayslot: out std_logic;
          MM_cop0_a_c:   in  std_logic_vector;
          WB_cop0_a_c:   out std_logic_vector;
          MM_cop0_val:   in  std_logic_vector;
@@ -137,7 +143,7 @@ architecture rtl of core is
   signal IF_excp_type,RF_excp_type,EX_excp_type,WB_excp_type: exception_type := exNOP;
   signal MM_excp_type, MM_excp_type_i, TLB_excp_type : exception_type;
   signal trap_instr,EX_trap_instr: instr_type;
-  signal RF_PC,EX_PC,MM_PC, LLaddr: reg32;
+  signal RF_PC,EX_PC,MM_PC,WB_PC, LLaddr: reg32;
   signal EX_LLbit,MM_LLbit,WB_LLbit: std_logic;
   signal LL_update,LL_SC_abort,LL_SC_differ,EX_trapped,MM_ex_trapped: std_logic;
   signal int_req, EX_int_req: reg8;
@@ -158,7 +164,7 @@ architecture rtl of core is
   signal exception,EX_exception,is_exception : exception_type := exNOP;
   signal ExcCode : reg5 := cop0code_NULL;
   signal exception_num,exception_dec,TLB_excp_num : integer; -- for debugging only
-  signal next_instr_in_delay_slot,EX_is_delayslot, is_delayslot : std_logic;
+  signal RF_is_delayslot,EX_is_delayslot,MM_is_delayslot,WB_is_delayslot,is_delayslot : std_logic;
   signal cop0_sel, EX_cop0_sel, epc_source : reg3;
   signal cop0_reg,EX_cop0_reg : reg5;
   signal cop0_inp, RF_cop0_val,EX_cop0_val,MM_cop0_val,WB_cop0_val : reg32;
@@ -816,10 +822,10 @@ begin
   is_trap <= '1' when ((funct_word.trap = '1')or(rimm_word.trap = '1'))
                  else '0';
   
-  next_instr_in_delay_slot <= '1' when ((ctrl_word.PCsel  /= "00") or
-                                        (funct_word.PCsel /= "00") or
-                                        (rimm_word.PCsel  /= "00"))
-                              else '0';
+  RF_is_delayslot <= '1' when ((ctrl_word.PCsel  /= "00") or
+                               (funct_word.PCsel /= "00") or
+                               (rimm_word.PCsel  /= "00"))
+                     else '0';
   
   
   RF_STOP_SIMULATION: process (rst, phi2, opcode, func,
@@ -1353,8 +1359,8 @@ begin
 
   EX_addr <= phy_d_addr;                 -- with TLB  
 
-  assert true or ( (phy_d_addr = v_addr) and (EX_aVal = '0') )  -- DEBUG
-    report "mapping mismatch V:P "& SLV32HEX(v_addr) &":"& SLV32HEX(phy_d_addr);
+  -- assert ( (phy_d_addr = v_addr) and (EX_aVal = '0') )  -- DEBUG
+  --  report "mapping mismatch V:P "& SLV32HEX(v_addr) &":"& SLV32HEX(phy_d_addr);
   
   
   -- ----------------------------------------------------------------------
@@ -1660,7 +1666,7 @@ begin
     port map (clk, rst, excp_RF_EX_ld, can_trap,EX_can_trap, 
               exception,EX_exception, trap_instr,EX_trap_instr, 
               cop0_reg,EX_cop0_reg, cop0_sel,EX_cop0_sel,
-              next_instr_in_delay_slot,EX_is_delayslot,
+              RF_is_delayslot,EX_is_delayslot,
               RF_PC_abort,EX_PC_abort, RF_PC,EX_PC, RF_nmi,EX_nmi,
               interrupt,EX_interrupt, int_req,EX_int_req,
               tr_is_equal,EX_tr_is_equal, tr_less_than,EX_tr_less_than);
@@ -1668,12 +1674,9 @@ begin
 
   -- EX execute exception ---------------------------------------------
 
-  U_HOLD_DELAY_SLOT: FFD port map (clk,rst,'1',EX_is_delayslot, is_delayslot);
-
   
   -- check for overflow in EX, send it to MM for later processing
   ex_trapped <= '1' when (EX_can_trap = b"10" and ovfl = '1') else '0';
-
 
  
   is_exception <=  TLB_excp_type  when tlb_exception       else
@@ -1684,11 +1687,12 @@ begin
 
   exception_num <= exception_type'pos(is_exception); -- for debugging only
 
+
   -- STATUS -- pg 79 -- cop0_12 --------------------
   COP0_DECODE_EXCEPTION_AND_UPDATE_STATUS:
   process (EX_a_rt, is_exception, EX_trap_instr, 
            EX_cop0_reg, EX_cop0_sel, EX_nmi, EX_interrupt,EX_int_req,
-           next_instr_in_delay_slot, EX_is_delayslot, is_delayslot,
+           RF_is_delayslot, EX_is_delayslot, MM_is_delayslot, WB_is_delayslot,
            cop0_inp, EX_tr_is_equal, EX_tr_less_than,
            INDEX, RANDOM, EntryLo0, EntryLo1, CONTEXT, PAGEMASK, WIRED,
            EntryHi, COUNT, COMPARE, STATUS, CAUSE, EPC, BadVAddr,
@@ -1720,7 +1724,8 @@ begin
     trap_taken      <= '0';
     ExcCode         <= cop0code_NULL;
     EX_mfc0         <= '0';
-
+    is_delayslot    <= '0';
+    
     newSTATUS             := STATUS;    -- preserve as needed
     newSTATUS(STATUS_BEV) := '0';  -- interrupts at offset 0x200
     newSTATUS(STATUS_CU3) := '0';  -- COP-3 absent (always)
@@ -1842,9 +1847,11 @@ begin
           i_epc_update := '0';
           i_nullify    := '1';          -- nullify instructions in IF,RF
           if EX_is_delayslot = '1' then -- instr is in delay slot
-            i_epc_source := b"010";     -- EX_PC, re-execute branch/jump
+            i_epc_source  := b"010";    -- EX_PC, re-execute branch/jump
+            is_delayslot  <= EX_is_delayslot;
           else
-            i_epc_source := b"001";     -- RF_PC
+            i_epc_source  := b"001";    -- RF_PC
+            is_delayslot  <= RF_is_delayslot;
           end if;
           i_excp_PCsel := PCsel_EXC_0180;  -- PC <= exception_180
         else
@@ -1875,18 +1882,24 @@ begin
         ExcCode         <= cop0code_Ov;
         i_nullify       := '1';         -- nullify instructions in IF,RF
         nullify_EX      <= '1';         -- and instruction in EX
-        i_epc_source    := b"010";      -- bad address is in EXCP_EX_PC
+        if WB_is_delayslot = '1' then   -- instr is in delay slot
+          i_epc_source := b"101";       -- WB_PC, re-execute branch/jump
+          is_delayslot <= WB_is_delayslot;
+        else
+          i_epc_source := b"011";       -- offending instr PC is in MM_PC
+          is_delayslot <= MM_is_delayslot;
+        end if;
         
         
       when IFaddressError | MMaddressErrorLD | MMaddressErrorST =>
-        -- fetch/load/store from UNALIGNED ADDRESS
+        -- fetch/load/store from/to UNALIGNED ADDRESS
         newSTATUS(STATUS_EXL) := '1';   -- at exception level
         newSTATUS(STATUS_IE)  := '0';   -- disable interrupts
         exception_taken <= '1';
         i_update        := '1';
         i_update_r      := cop0reg_STATUS;
         i_epc_update    := '0';
-        i_excp_PCsel    := PCsel_EXC_0180; -- PC <= exception_0180
+        i_excp_PCsel    := PCsel_EXC_0180;
         if is_exception = MMaddressErrorST then
           ExcCode <= cop0code_AdES;
         else
@@ -1896,6 +1909,7 @@ begin
           i_nullify := '1';             -- nullify instructions in IF,RF
         end if;
         i_epc_source := b"010";         -- bad address is in EXCP_EX_PC
+        is_delayslot <= EX_is_delayslot;
         
       when exEHB =>                     -- stall processor to clear hazards
         i_stall := '1';
@@ -1910,24 +1924,30 @@ begin
         case is_exception is
           when exTLBrefillIF =>
             ExcCode <= cop0code_TLBL;
-            if next_instr_in_delay_slot = '1' then   -- instr is in delay slot
+            if RF_is_delayslot = '1' then   -- instr is in delay slot
               i_epc_source := b"001";       -- RF_PC, re-execute branch/jump
+              is_delayslot <= RF_is_delayslot;
             else
               i_epc_source := b"000";       -- PC
+              is_delayslot <= '0';
             end if;
           when exTLBrefillRD =>
             ExcCode <= cop0code_TLBL;
-            if is_delayslot = '1' then      -- instr is in delay slot
-              i_epc_source := b"011";       -- EX_PC, re-execute branch/jump
+            if MM_is_delayslot = '1' then   -- instr is in delay slot
+              i_epc_source := b"011";       -- MM_PC, re-execute branch/jump
+              is_delayslot <= MM_is_delayslot;
             else
-              i_epc_source := b"010";       -- RF_PC
+              i_epc_source := b"010";       -- EX_PC
+              is_delayslot <= EX_is_delayslot;
             end if;
           when exTLBrefillWR =>
             ExcCode <= cop0code_TLBS;
-            if is_delayslot = '1' then      -- instr is in delay slot
+            if MM_is_delayslot = '1' then   -- instr is in delay slot
               i_epc_source := b"011";       -- EX_PC, re-execute branch/jump
+              is_delayslot <= MM_is_delayslot;
             else
               i_epc_source := b"010";       -- RF_PC
+              is_delayslot <= EX_is_delayslot;
             end if;
           when others => null;
         end case;
@@ -1944,38 +1964,46 @@ begin
         case is_exception is
           when exTLBinvalIF | exTLBdblFaultIF =>
             ExcCode <= cop0code_TLBL;
-            if next_instr_in_delay_slot = '1' then   -- instr is in delay slot
+            if RF_is_delayslot = '1' then   -- instr is in delay slot
               i_epc_source := b"001";       -- RF_PC, re-execute branch/jump
+              is_delayslot <= RF_is_delayslot;              
             else
               i_epc_source := b"000";       -- PC
+              is_delayslot <= '0';
             end if;
           when exTLBinvalRD | exTLBdblFaultRD =>
             ExcCode <= cop0code_TLBL;
-            if is_delayslot = '1' then      -- instr is in delay slot
+            if MM_is_delayslot = '1' then   -- instr is in delay slot
               i_epc_source := b"011";       -- MM_PC, re-execute branch/jump
+              is_delayslot <= MM_is_delayslot;              
             else
               i_epc_source := b"010";       -- EX_PC
+              is_delayslot <= EX_is_delayslot;
             end if;
           when exTLBinvalWR | exTLBdblFaultWR =>
             ExcCode <= cop0code_TLBS;
-            if is_delayslot = '1' then      -- instr is in delay slot
+            if MM_is_delayslot = '1' then   -- instr is in delay slot
               i_epc_source := b"011";       -- MM_PC, re-execute branch/jump
+              is_delayslot <= MM_is_delayslot;
             else
               i_epc_source := b"010";       -- EX_PC
+              is_delayslot <= EX_is_delayslot;
             end if;
           when exTLBmod =>
             ExcCode <= cop0code_Mod;
-            if is_delayslot = '1' then      -- instr is in delay slot
+            if MM_is_delayslot = '1' then   -- instr is in delay slot
               i_epc_source := b"011";       -- MM_PC, re-execute branch/jump
+              is_delayslot <= MM_is_delayslot;
             else
               i_epc_source := b"010";       -- EX_PC
+              is_delayslot <= EX_is_delayslot;
             end if;
           when others => null;
         end case;
         newSTATUS(STATUS_EXL) := '1';       -- at exception level
         newSTATUS(STATUS_IE)  := '0';       -- disable interrupts
-        i_update        := '1';
-        i_update_r      := cop0reg_STATUS;
+        i_update     := '1';
+        i_update_r   := cop0reg_STATUS;
         i_excp_PCsel := PCsel_EXC_0180;     -- PC <= exception_0180
         i_epc_update := '0';
 
@@ -1999,8 +2027,10 @@ begin
           i_nullify    := '1';          -- nullify instructions in IF,RF
           if EX_is_delayslot = '1' then -- instr is in delay slot
             i_epc_source := b"010";     -- EX_PC, re-execute branch/jump
+            is_delayslot <= EX_is_delayslot;
           else
             i_epc_source := b"001";     -- RF_PC
+            is_delayslot <= RF_is_delayslot;
           end if;
           i_excp_PCsel := PCsel_EXC_0000; -- PC <= exception_0000
         
@@ -2021,8 +2051,10 @@ begin
           i_nullify    := '1';          -- nullify instructions in IF,RF
           if EX_is_delayslot = '1' then -- instr is in delay slot
             i_epc_source := b"010";     -- EX_PC, re-execute branch/jump
+            is_delayslot <= EX_is_delayslot;
           else
             i_epc_source := b"001";     -- RF_PC
+            is_delayslot <= RF_is_delayslot;
           end if;
           if CAUSE(CAUSE_IV) = '1' then
             i_excp_PCsel := PCsel_EXC_0200; -- PC <= exception_0200
@@ -2085,19 +2117,19 @@ begin
   COP0_STATUS: register32 generic map (RESET_STATUS)
     port map (clk, rst, status_update, STATUSinp, STATUS);
 
+   
 
   -- CAUSE -- pg 92-- cop0_13 --------------------------
   COP0_COMPUTE_CAUSE: process(rst, update,update_reg,
-                              EX_int_req, ExcCode, cop0_inp,
-                              EX_is_delayslot,
+                              EX_int_req, ExcCode, cop0_inp, is_delayslot,
                               count_eq_compare,count_enable, CAUSE)
     variable newCAUSE : reg32;
   begin
 
     if STATUS(STATUS_EXL) = '0' then
-      newCAUSE(CAUSE_BD)   := EX_is_delayslot;  -- instr is in delay slot
+      newCAUSE(CAUSE_BD)   := is_delayslot;  -- instr is in delay slot
     else
-      newCAUSE(CAUSE_BD)   := CAUSE(CAUSE_BD);  -- hold it in a double fault
+      newCAUSE(CAUSE_BD)   := CAUSE(CAUSE_BD);  -- hold it on a double fault
     end if;
     newCAUSE(CAUSE_TI)     := count_eq_compare;
     newCAUSE(CAUSE_CE1)    := '0';
@@ -2155,7 +2187,8 @@ begin
     RF_PC           when b"001",        -- invalid instr exception
     EX_PC           when b"010",        -- interrupt, eret, overflow
     MM_PC           when b"011",        -- data memory exception
-    alu_fwd_B       when others; -- b"100",        -- mtc0
+    alu_fwd_B       when b"100",        -- mtc0
+    WB_PC           when others;        -- overflow in a branch delay slot
     -- (others => 'X') when others;        -- invalid selection
     
   COP0_EPC: register32 generic map (x"00000000")
@@ -2863,6 +2896,7 @@ begin
     port map (clk, rst, excp_EX_MM_ld, EX_can_trap,MM_can_trap,   
               EX_excp_type,MM_excp_type_i, EX_PC,MM_PC,
               EX_LLbit,MM_LLbit, addrError,MM_abort,
+              EX_is_delayslot,MM_is_delayslot,
               EX_cop0_a_c,MM_cop0_a_c, EX_cop0_val,MM_cop0_val,
               EX_trapped, MM_ex_trapped, EX_mfc0,MM_mfc0);
 
@@ -2870,8 +2904,9 @@ begin
   -- ----------------------------------------------------------------------    
   PIPESTAGE_EXCP_MM_WB: reg_excp_MM_WB
     port map (clk, rst, excp_MM_WB_ld, MM_can_trap,WB_can_trap,   
-              MM_excp_type, WB_excp_type,
+              MM_excp_type, WB_excp_type, MM_PC,WB_PC,
               MM_LLbit,WB_LLbit, MM_abort,WB_abort,
+              MM_is_delayslot,WB_is_delayslot,
               MM_cop0_a_c,WB_cop0_a_c, MM_cop0_val,WB_cop0_val);
 
 

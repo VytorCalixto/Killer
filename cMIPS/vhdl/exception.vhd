@@ -139,6 +139,8 @@ entity reg_excp_EX_MM is
        MM_cop0_LLbit: out std_logic;
        addrError:     in  boolean;
        MM_abort:      out boolean;
+       EX_is_delayslot: in  std_logic;
+       MM_is_delayslot: out std_logic;
        EX_cop0_a_c:   in  reg5;
        MM_cop0_a_c:   out reg5;
        EX_cop0_val:   in  reg32;
@@ -159,15 +161,16 @@ begin
       MM_ex_trapped <= '0';
     elsif rising_edge(clk) then
       if ld = '0' then
-        MM_excp_type  <= EX_excp_type  ;
-        MM_can_trap   <= EX_can_trap   ;
-        MM_PC         <= EX_PC         ;
-        MM_cop0_LLbit <= EX_cop0_LLbit ;
-        MM_abort      <= addrError     ;
-        MM_cop0_a_c   <= EX_cop0_a_c   ;
-        MM_cop0_val   <= EX_cop0_val   ;
-        MM_ex_trapped <= EX_trapped    ;
-        MM_mfc0       <= EX_mfc0       ;
+        MM_excp_type    <= EX_excp_type  ;
+        MM_can_trap     <= EX_can_trap   ;
+        MM_PC           <= EX_PC         ;
+        MM_cop0_LLbit   <= EX_cop0_LLbit ;
+        MM_abort        <= addrError     ;
+        MM_is_delayslot <= EX_is_delayslot;
+        MM_cop0_a_c     <= EX_cop0_a_c   ;
+        MM_cop0_val     <= EX_cop0_val   ;
+        MM_ex_trapped   <= EX_trapped    ;
+        MM_mfc0         <= EX_mfc0       ;
       end if;
     end if;
   end process;
@@ -188,10 +191,14 @@ entity reg_excp_MM_WB is
        WB_can_trap:   out reg2;
        MM_excp_type:  in  exception_type;
        WB_excp_type:  out exception_type;
+       MM_PC:         in  std_logic_vector;
+       WB_PC:         out std_logic_vector;
        MM_cop0_LLbit: in  std_logic;
        WB_cop0_LLbit: out std_logic;
        MM_abort:      in  boolean;
        WB_abort:      out boolean;
+       MM_is_delayslot: in  std_logic;
+       WB_is_delayslot: out std_logic;
        MM_cop0_a_c:   in  reg5;
        WB_cop0_a_c:   out reg5;
        MM_cop0_val:   in  reg32;
@@ -208,12 +215,14 @@ begin
       WB_abort      <=  FALSE;
     elsif rising_edge(clk) then
       if ld = '0' then
-        WB_excp_type  <= MM_excp_type  ;
-        WB_can_trap   <= MM_can_trap   ;
-        WB_cop0_LLbit <= MM_cop0_LLbit ;
-        WB_abort      <= MM_abort      ;
-        WB_cop0_a_c   <= MM_cop0_a_c   ;
-        WB_cop0_val   <= MM_cop0_val   ;
+        WB_excp_type    <= MM_excp_type  ;
+        WB_PC           <= MM_PC         ;
+        WB_can_trap     <= MM_can_trap   ;
+        WB_cop0_LLbit   <= MM_cop0_LLbit ;
+        WB_abort        <= MM_abort      ;
+        WB_is_delayslot <= MM_is_delayslot;
+        WB_cop0_a_c     <= MM_cop0_a_c   ;
+        WB_cop0_val     <= MM_cop0_val   ;
       end if;
     end if;
   end process;
