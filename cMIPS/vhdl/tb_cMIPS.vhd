@@ -603,7 +603,7 @@ begin  -- TB
 
   uart_cts <= '1';
   
-  start_remota <= '0', '1' after 400*CLOCK_PER;
+  start_remota <= '0', '1' after 200*CLOCK_PER;
   
   U_uart_remota: remota generic map ("serial.out","serial.inp")
     port map (rst, clk, start_remota, uart_txd, uart_rxd, bit_rt);

@@ -219,7 +219,7 @@ begin
 
   c0 <= phi0;
   c1 <= phi2_dlyd;
-  c2 <= phi2;
+  c2 <= phi1;
   c3 <= phi3;
   c4 <= inclk0;
   

@@ -1708,7 +1708,7 @@ begin
 
     newSTATUS    := STATUS;      
     i_epc_update := '1';
-    i_epc_source := b"000";
+    i_epc_source := EPC_src_PC;
     i_excp_PCsel := PCsel_EXC_none;     -- PC <= normal processing PC
     i_update     := '0';
     i_update_r   := b"00000";
@@ -1751,7 +1751,7 @@ begin
             i_stall    := '0';
           when cop0reg_EPC =>
             i_epc_update := '0';
-            i_epc_source := b"100";     -- EX_B
+            i_epc_source := EPC_src_B;     -- EX_B
             i_stall      := '0';
           when others =>
             i_stall  := '0';
@@ -1838,27 +1838,27 @@ begin
             when BREAK   => ExcCode <= cop0code_Bp;
             when others  => null;
           end case;  
-          newSTATUS(STATUS_EXL) := '1';   -- at exception level
-          newSTATUS(STATUS_UM)  := '0';   -- enter kernel mode          
-          newSTATUS(STATUS_IE)  := '0';   -- disable interrupts
+          newSTATUS(STATUS_EXL) := '1';  -- at exception level
+          newSTATUS(STATUS_UM)  := '0';  -- enter kernel mode          
+          newSTATUS(STATUS_IE)  := '0';  -- disable interrupts
           i_update   := '1';
           i_update_r := cop0reg_STATUS;
           i_stall    := '0';
           i_epc_update := '0';
-          i_nullify    := '1';          -- nullify instructions in IF,RF
-          if EX_is_delayslot = '1' then -- instr is in delay slot
-            i_epc_source  := b"010";    -- EX_PC, re-execute branch/jump
+          i_nullify    := '1';           -- nullify instructions in IF,RF
+          if EX_is_delayslot = '1' then  -- instr is in delay slot
+            i_epc_source  := EPC_src_EX; -- EX_PC, re-execute branch/jump
             is_delayslot  <= EX_is_delayslot;
           else
-            i_epc_source  := b"001";    -- RF_PC
+            i_epc_source  := EPC_src_RF; -- RF_PC
             is_delayslot  <= RF_is_delayslot;
           end if;
-          i_excp_PCsel := PCsel_EXC_0180;  -- PC <= exception_180
+          i_excp_PCsel := PCsel_EXC_0180;-- PC <= exception_180
         else
           trap_taken <= '0';
         end if;
 
-      when exLL =>                      -- load linked (not a real exception)
+      when exLL =>                       -- load linked (not a real exception)
         i_update   := '1';
         i_update_r := cop0reg_LLaddr;
 
@@ -1883,10 +1883,10 @@ begin
         i_nullify       := '1';         -- nullify instructions in IF,RF
         nullify_EX      <= '1';         -- and instruction in EX
         if WB_is_delayslot = '1' then   -- instr is in delay slot
-          i_epc_source := b"101";       -- WB_PC, re-execute branch/jump
+          i_epc_source := EPC_src_WB;   -- WB_PC, re-execute branch/jump
           is_delayslot <= WB_is_delayslot;
         else
-          i_epc_source := b"011";       -- offending instr PC is in MM_PC
+          i_epc_source := EPC_src_MM;   -- offending instr PC is in MM_PC
           is_delayslot <= MM_is_delayslot;
         end if;
         
@@ -1908,7 +1908,7 @@ begin
         if is_exception = IFaddressError then
           i_nullify := '1';             -- nullify instructions in IF,RF
         end if;
-        i_epc_source := b"010";         -- bad address is in EXCP_EX_PC
+        i_epc_source := EPC_src_EX;     -- bad address is in EXCP_EX_PC
         is_delayslot <= EX_is_delayslot;
         
       when exEHB =>                     -- stall processor to clear hazards
@@ -1925,28 +1925,28 @@ begin
           when exTLBrefillIF =>
             ExcCode <= cop0code_TLBL;
             if RF_is_delayslot = '1' then   -- instr is in delay slot
-              i_epc_source := b"001";       -- RF_PC, re-execute branch/jump
+              i_epc_source := EPC_src_RF;   -- RF_PC, re-execute branch/jump
               is_delayslot <= RF_is_delayslot;
             else
-              i_epc_source := b"000";       -- PC
+              i_epc_source := EPC_src_PC;   -- PC
               is_delayslot <= '0';
             end if;
           when exTLBrefillRD =>
             ExcCode <= cop0code_TLBL;
             if MM_is_delayslot = '1' then   -- instr is in delay slot
-              i_epc_source := b"011";       -- MM_PC, re-execute branch/jump
+              i_epc_source := EPC_src_MM;   -- MM_PC, re-execute branch/jump
               is_delayslot <= MM_is_delayslot;
             else
-              i_epc_source := b"010";       -- EX_PC
+              i_epc_source := EPC_src_EX;   -- EX_PC
               is_delayslot <= EX_is_delayslot;
             end if;
           when exTLBrefillWR =>
             ExcCode <= cop0code_TLBS;
             if MM_is_delayslot = '1' then   -- instr is in delay slot
-              i_epc_source := b"011";       -- EX_PC, re-execute branch/jump
+              i_epc_source := EPC_src_MM;   -- MM_PC, re-execute branch/jump
               is_delayslot <= MM_is_delayslot;
             else
-              i_epc_source := b"010";       -- RF_PC
+              i_epc_source := EPC_src_EX;   -- EX_PC
               is_delayslot <= EX_is_delayslot;
             end if;
           when others => null;
@@ -1965,37 +1965,37 @@ begin
           when exTLBinvalIF | exTLBdblFaultIF =>
             ExcCode <= cop0code_TLBL;
             if RF_is_delayslot = '1' then   -- instr is in delay slot
-              i_epc_source := b"001";       -- RF_PC, re-execute branch/jump
+              i_epc_source := EPC_src_RF;   -- RF_PC, re-execute branch/jump
               is_delayslot <= RF_is_delayslot;              
             else
-              i_epc_source := b"000";       -- PC
+              i_epc_source := EPC_src_PC;   -- PC
               is_delayslot <= '0';
             end if;
           when exTLBinvalRD | exTLBdblFaultRD =>
             ExcCode <= cop0code_TLBL;
             if MM_is_delayslot = '1' then   -- instr is in delay slot
-              i_epc_source := b"011";       -- MM_PC, re-execute branch/jump
+              i_epc_source := EPC_src_MM;   -- MM_PC, re-execute branch/jump
               is_delayslot <= MM_is_delayslot;              
             else
-              i_epc_source := b"010";       -- EX_PC
+              i_epc_source := EPC_src_EX;   -- EX_PC
               is_delayslot <= EX_is_delayslot;
             end if;
           when exTLBinvalWR | exTLBdblFaultWR =>
             ExcCode <= cop0code_TLBS;
             if MM_is_delayslot = '1' then   -- instr is in delay slot
-              i_epc_source := b"011";       -- MM_PC, re-execute branch/jump
+              i_epc_source := EPC_src_MM;   -- MM_PC, re-execute branch/jump
               is_delayslot <= MM_is_delayslot;
             else
-              i_epc_source := b"010";       -- EX_PC
+              i_epc_source := EPC_src_EX;   -- EX_PC
               is_delayslot <= EX_is_delayslot;
             end if;
           when exTLBmod =>
             ExcCode <= cop0code_Mod;
             if MM_is_delayslot = '1' then   -- instr is in delay slot
-              i_epc_source := b"011";       -- MM_PC, re-execute branch/jump
+              i_epc_source := EPC_src_MM;   -- MM_PC, re-execute branch/jump
               is_delayslot <= MM_is_delayslot;
             else
-              i_epc_source := b"010";       -- EX_PC
+              i_epc_source := EPC_src_EX;   -- EX_PC
               is_delayslot <= EX_is_delayslot;
             end if;
           when others => null;
@@ -2026,10 +2026,10 @@ begin
           i_epc_update := '0';
           i_nullify    := '1';          -- nullify instructions in IF,RF
           if EX_is_delayslot = '1' then -- instr is in delay slot
-            i_epc_source := b"010";     -- EX_PC, re-execute branch/jump
+            i_epc_source := EPC_src_EX; -- EX_PC, re-execute branch/jump
             is_delayslot <= EX_is_delayslot;
           else
-            i_epc_source := b"001";     -- RF_PC
+            i_epc_source := EPC_src_RF; -- RF_PC
             is_delayslot <= RF_is_delayslot;
           end if;
           i_excp_PCsel := PCsel_EXC_0000; -- PC <= exception_0000
@@ -2050,10 +2050,10 @@ begin
           i_epc_update := '0';
           i_nullify    := '1';          -- nullify instructions in IF,RF
           if EX_is_delayslot = '1' then -- instr is in delay slot
-            i_epc_source := b"010";     -- EX_PC, re-execute branch/jump
+            i_epc_source := EPC_src_EX; -- EX_PC, re-execute branch/jump
             is_delayslot <= EX_is_delayslot;
           else
-            i_epc_source := b"001";     -- RF_PC
+            i_epc_source := EPC_src_RF; -- RF_PC
             is_delayslot <= RF_is_delayslot;
           end if;
           if CAUSE(CAUSE_IV) = '1' then
@@ -2183,13 +2183,13 @@ begin
 
   -- EPC -- pg 97 -- cop0_14 -------------------
   with epc_source select EPCinp <=
-    PC              when b"000",        -- instr fetch exception
-    RF_PC           when b"001",        -- invalid instr exception
-    EX_PC           when b"010",        -- interrupt, eret, overflow
-    MM_PC           when b"011",        -- data memory exception
-    alu_fwd_B       when b"100",        -- mtc0
-    WB_PC           when others;        -- overflow in a branch delay slot
-    -- (others => 'X') when others;        -- invalid selection
+    PC              when EPC_src_PC,    -- instr fetch exception
+    RF_PC           when EPC_src_RF,    -- invalid instr exception
+    EX_PC           when EPC_src_EX,    -- interrupt, eret, overflow
+    MM_PC           when EPC_src_MM,    -- data memory exception
+    WB_PC           when EPC_src_WB,    -- overflow in a branch delay slot
+    alu_fwd_B       when EPC_src_B,     -- mtc0
+    (others => 'X') when others;        -- invalid selection
     
   COP0_EPC: register32 generic map (x"00000000")
     port map (clk, rst, epc_update, EPCinp, EPC);

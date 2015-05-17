@@ -135,7 +135,7 @@ package p_EXCEPTION is
   constant CAUSE_ExcCodehi: integer := 6;      -- exception code
   constant CAUSE_ExcCodelo: integer := 2;      -- exception code
 
-  -- Sources of Exception Hnadler's addresses; signal  excp_PCsel  
+  -- Sources of Exception Handler's addresses; signal  excp_PCsel  
   constant PCsel_EXC_none : reg3 := b"000";  -- no exception
   constant PCsel_EXC_EPC  : reg3 := b"001";  -- ERET
   constant PCsel_EXC_0180 : reg3 := b"010";  -- general exception handler
@@ -143,6 +143,13 @@ package p_EXCEPTION is
   constant PCsel_EXC_0100 : reg3 := b"100";  -- TLBmiss entry point
   constant PCsel_EXC_0000 : reg3 := b"110";  -- NMI or soft-reset handler
 
+  -- Sources for EPC; signal  EPC_source
+  constant EPC_src_PC  : reg3 := b"000"; -- from PC
+  constant EPC_src_RF  : reg3 := b"001"; -- from RF pipestage
+  constant EPC_src_EX  : reg3 := b"010"; -- from EX pipestage
+  constant EPC_src_MM  : reg3 := b"011"; -- from MM pipestage
+  constant EPC_src_WB  : reg3 := b"100"; -- from WB pipestage
+  constant EPC_src_B   : reg3 := b"101"; -- from B register
   
 end p_EXCEPTION;
 

@@ -208,6 +208,7 @@ package p_MEMORY is
   constant tag_zeros : std_logic_vector(PAGE_SZ_BITS downto 0) := (others => '0');
   constant tag_ones  : std_logic_vector(VABITS-1 downto PAGE_SZ_BITS+1) := (others => '1');
   constant tag_mask  : reg32 := tag_ones & tag_zeros;
+  constant tag_g     : reg32 := x"00000100";
 
 
   -- physical addresses for 8 ROM pages
@@ -221,25 +222,25 @@ package p_MEMORY is
   constant x_ROM_PPN_6 : reg32 := std_logic_vector(to_signed(INST_BASE_ADDR + 6*PAGE_SZ, 32));
   constant x_ROM_PPN_7 : reg32 := std_logic_vector(to_signed(INST_BASE_ADDR + 7*PAGE_SZ, 32));
 
-  constant MMU_ini_tag_ROM0 : reg32 := x_ROM_PPN_0 and tag_mask;
+  constant MMU_ini_tag_ROM0 : reg32 := (x_ROM_PPN_0 and tag_mask) or tag_g;
   constant MMU_ini_dat_ROM0 : mmu_dat_reg := 
    x_ROM_PPN_0(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
   constant MMU_ini_dat_ROM1 : mmu_dat_reg := 
    x_ROM_PPN_1(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
 
-  constant MMU_ini_tag_ROM2 : reg32 := x_ROM_PPN_2 and tag_mask;
+  constant MMU_ini_tag_ROM2 : reg32 := (x_ROM_PPN_2 and tag_mask) or tag_g;
   constant MMU_ini_dat_ROM2 : mmu_dat_reg := 
    x_ROM_PPN_2(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
   constant MMU_ini_dat_ROM3 : mmu_dat_reg := 
    x_ROM_PPN_3(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
 
-  constant MMU_ini_tag_ROM4 : reg32 := x_ROM_PPN_4 and tag_mask;
+  constant MMU_ini_tag_ROM4 : reg32 := (x_ROM_PPN_4 and tag_mask) or tag_g;
   constant MMU_ini_dat_ROM4 : mmu_dat_reg := 
    x_ROM_PPN_4(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
   constant MMU_ini_dat_ROM5 : mmu_dat_reg := 
    x_ROM_PPN_5(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
 
-  constant MMU_ini_tag_ROM6 : reg32 := x_ROM_PPN_6 and tag_mask;
+  constant MMU_ini_tag_ROM6 : reg32 := (x_ROM_PPN_6 and tag_mask) or tag_g;
   constant MMU_ini_dat_ROM6 : mmu_dat_reg := 
    x_ROM_PPN_6(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
   constant MMU_ini_dat_ROM7 : mmu_dat_reg := 
@@ -257,25 +258,25 @@ package p_MEMORY is
   constant x_RAM_PPN_6 : reg32 := std_logic_vector(to_signed(DATA_BASE_ADDR + 6*PAGE_SZ, 32));
   constant x_RAM_PPN_7 : reg32 := std_logic_vector(to_signed(DATA_BASE_ADDR + 7*PAGE_SZ, 32));
   
-  constant MMU_ini_tag_RAM0 : reg32 := x_RAM_PPN_0 and tag_mask;
+  constant MMU_ini_tag_RAM0 : reg32 := (x_RAM_PPN_0 and tag_mask) or tag_g;
   constant MMU_ini_dat_RAM0 : mmu_dat_reg := 
    x_RAM_PPN_0(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
   constant MMU_ini_dat_RAM1 : mmu_dat_reg := 
    x_RAM_PPN_1(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
 
-  constant MMU_ini_tag_RAM2 : reg32 := x_RAM_PPN_2 and tag_mask;
+  constant MMU_ini_tag_RAM2 : reg32 := (x_RAM_PPN_2 and tag_mask) or tag_g;
   constant MMU_ini_dat_RAM2 : mmu_dat_reg := 
    x_RAM_PPN_2(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
   constant MMU_ini_dat_RAM3 : mmu_dat_reg := 
    x_RAM_PPN_3(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
 
-  constant MMU_ini_tag_RAM4 : reg32 := x_RAM_PPN_4 and tag_mask;
+  constant MMU_ini_tag_RAM4 : reg32 := (x_RAM_PPN_4 and tag_mask) or tag_g;
   constant MMU_ini_dat_RAM4 : mmu_dat_reg := 
    x_RAM_PPN_4(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
   constant MMU_ini_dat_RAM5 : mmu_dat_reg := 
    x_RAM_PPN_5(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
 
-  constant MMU_ini_tag_RAM6 : reg32 := x_RAM_PPN_6 and tag_mask;
+  constant MMU_ini_tag_RAM6 : reg32 := (x_RAM_PPN_6 and tag_mask) or tag_g;
   constant MMU_ini_dat_RAM6 : mmu_dat_reg := 
    x_RAM_PPN_6(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
   constant MMU_ini_dat_RAM7 : mmu_dat_reg := 
@@ -287,7 +288,7 @@ package p_MEMORY is
   constant x_IO_PPN_0 : reg32 := std_logic_vector(to_signed(IO_BASE_ADDR + 0*PAGE_SZ, 32));
   constant x_IO_PPN_1 : reg32 := std_logic_vector(to_signed(IO_BASE_ADDR + 1*PAGE_SZ, 32));
 
-  constant MMU_ini_tag_IO : reg32 := x_IO_BASE_ADDR and tag_mask;
+  constant MMU_ini_tag_IO : reg32 := (x_IO_BASE_ADDR and tag_mask) or tag_g;
   constant MMU_ini_dat_IO0 : mmu_dat_reg := 
    x_IO_PPN_0(PABITS-1 downto PAGE_SZ_BITS) & b"000111"; -- d,v,g=1
   constant MMU_ini_dat_IO1 : mmu_dat_reg := 
