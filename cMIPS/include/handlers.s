@@ -68,7 +68,7 @@ extCounter:
 	# interrupt handler for UART attached to IP6=HW4
 
 	.bss 
-        .align  2
+    .align  2
 	.global rx_queue,rx_hd,rx_tl   # reception queue and pointers
 	.comm   rx_queue 16
 	.comm   rx_hd 4
@@ -80,7 +80,7 @@ extCounter:
 	.global nrx,ntx
 	.comm   nrx 4                  # characters in RX_queue
 	.comm   ntx 4                  # spaces left in TX_queue
-        .comm   _uart_buff 16*4        # up to 16 registers to be saved here
+    .comm   _uart_buff 16*4        # up to 16 registers to be saved here
 
 	.set UART_rx_irq,0x08
 	.set UART_tx_irq,0x10
@@ -108,11 +108,11 @@ UARTinterr:
 	#----------------------------------
 	# while you are developing the complete handler,
 	#    uncomment the line below and comment out lines up to UARTret
-	# .include "../tests/handlerUART.s"
+	.include "../tests/handlerUART.s"
 	#----------------------------------
 	
-	andi  $a0, $k1, UART_rx_irq # Is this reception?
-	beq   $a0, $zero, UARTret   #   no, ignore it and return
+	# andi  $a0, $k1, UART_rx_irq # Is this reception?
+	# beq   $a0, $zero, UARTret   #   no, ignore it and return
 	
 	lui   $a0, %hi(HW_uart_addr)
 	ori   $a0, $a0, %lo(HW_uart_addr)
