@@ -44,7 +44,7 @@ typedef struct serial {
 #define LONG_STRING 1
 
 #if LONG_STRING
-char *dog = "\n\tthe quick brown fox jumps over the lazy dog\n";
+char *dog = "\tthe quick brown fox jumps over the lazy dog";
 char s[32];
 #else
 char s[32]; //  = "123";

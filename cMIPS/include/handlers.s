@@ -12,6 +12,7 @@
 
 	.bss
 	.align  2
+	.set noreorder
 	.global _counter_val             # accumulate number of interrupts
 	.comm   _counter_val 4
 	.comm   _counter_saves 8*4       # area to save up to 8 registers
@@ -31,9 +32,10 @@ extCounter:
 
 	#----------------------------------
 	# save additional registers
-	# la $k1, _counter_saves
-	# sw $a0, 0*4($k1)
-	# sw $a1, 1*4($k1)
+	# lui $k1, %hi(_counter_saves)
+	# ori $k1, $k1, %lo(_counter_saves)
+	# sw  $a0, 0*4($k1)
+	# sw  $a1, 1*4($k1)
 	#----------------------------------
 	
 	lui   $k1, %hi(HW_counter_value)
@@ -48,10 +50,11 @@ extCounter:
 	sw    $k1,0($k0)
 
 	#----------------------------------
-	# and then restore same registers
-	# la $k1, _counter_saves
-	# lw $a0, 0*4($k1)
-	# lw $a1, 1*4($k1)
+	# and then restore those same registers
+	# lui $k1, %hi(_counter_saves)
+	# ori $k1, $k1, %lo(_counter_saves)
+	# lw  $a0, 0*4($k1)
+	# lw  $a1, 1*4($k1)
 	#----------------------------------
 	
 	mfc0  $k0, cop0_STATUS	    # Read STATUS register
@@ -69,6 +72,7 @@ extCounter:
 
 	.bss 
         .align  2
+	.set noreorder
 	.global rx_queue,rx_hd,rx_tl   # reception queue and pointers
 	.comm   rx_queue 16
 	.comm   rx_hd 4
@@ -201,4 +205,3 @@ cmips_delay:
         nop
 	.end    cmips_delay
 	#----------------------------------------------------------------
-	

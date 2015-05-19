@@ -14,13 +14,12 @@ void main(void) {
   int i, increased, new, old, newValue;
 
   newValue = CNT_VALUE;
-  startCounter(newValue, 0);  // no interrupts
 
   for (i=0; i < N; i++) {       // repeat N rounds
     print(i);                   // print number of round
 
     newValue = CNT_VALUE + (i<<3);
-    startCounter(newValue, 0);  // num cycles increases with i
+    startCounter(newValue, 0);  // num cycles increases with i, no interrupts
 
     increased = TRUE;
     old = 0;
