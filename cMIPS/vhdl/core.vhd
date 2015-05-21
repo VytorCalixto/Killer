@@ -30,7 +30,9 @@ entity core is
   port (
     rst    : in    std_logic;
     clk    : in    std_logic;
+    phi1   : in    std_logic;
     phi2   : in    std_logic;
+    phi3   : in    std_logic;
     i_aVal : out   std_logic;
     i_wait : in    std_logic;
     i_addr : out   std_logic_vector;
@@ -781,9 +783,8 @@ begin
   -- uncomment this when making use of the TLB
   i_addr <= phy_i_addr;
   
-  instr_fetched <= instr when (nullify = '0' and abort = '0'
-                               and PC(1 downto 0) = b"00") else
-                   NULL_INSTRUCTION; -- x"fc000000";
+  instr_fetched <= instr when (nullify = '0' and abort = '0' and not(PC_abort))
+                   else NULL_INSTRUCTION; -- x"fc000000";
 
   
   PIPESTAGE_IF_RF: reg_IF_RF
@@ -878,8 +879,8 @@ begin
   
   move <= funct_word.move when opcode = b"000000" else '0';
   
-  U_regs: reg_bank
-    port map (clk, phi2, WB_wreg, a_rs,a_rt, WB_a_c,WB_C, regs_A,regs_B);
+  U_regs: reg_bank                      -- phi1=read_early, clk=write_late
+    port map (clk, phi1, WB_wreg, a_rs,a_rt, WB_a_c,WB_C, regs_A,regs_B);
 
   
   -- U_PC_plus_8: adder32 port map (x"00000004", RF_PCincd, pc_p8); -- (PC+4)+4
@@ -930,7 +931,8 @@ begin
   
 
   RF_FORWARDING_BRANCH: process (a_rs,a_rt,EX_wreg,EX_a_c,MM_wreg,MM_a_c,
-                                MM_aVal,MM_result,regs_A,regs_B,is_branch)
+                                 MM_aVal,MM_result,MM_mfc0,MM_cop0_val,
+                                 regs_A,regs_B,is_branch)
   begin
     br_stall <= '0';
 
@@ -938,41 +940,41 @@ begin
          (EX_wreg = '0') and (EX_a_c = a_rs) and (EX_a_c /= b"00000") ) then
       br_stall <= '1';
       eq_fwd_A <= regs_A;
-    elsif ((MM_wreg = '0') and (MM_a_c = a_rs) and (MM_a_c /= b"00000")
-           and (MM_aVal = '0')) then    -- LW load-delay slot
-      if (is_branch = '1') then
-        br_stall <= '1';
+    elsif ((MM_wreg = '0') and (MM_a_c = a_rs) and (MM_a_c /= b"00000")) then
+      if (MM_aVal = '0') then    -- LW load-delay slot
+        if (is_branch = '1') then
+          br_stall <= '1';
+        end if;
+        eq_fwd_A <= regs_A;
+      else    -- non-LW
+        if MM_mfc0 /= '1' then
+          eq_fwd_A <= MM_result;
+        else
+          eq_fwd_A <= MM_cop0_val;
+        end if;
       end if;
-    elsif ((MM_wreg = '0') and (MM_a_c = a_rs) and (MM_a_c /= b"00000")
-           and (MM_aVal = '1')) then    -- non-LW
-      if MM_mfc0 /= '1' then
-        eq_fwd_A <= MM_result;
-      else
-        eq_fwd_A <= MM_cop0_val;
-      end if;
-      -- eq_fwd_A <= MM_result;
     else
       eq_fwd_A <= regs_A;
     end if;
+
 
     if ( (is_branch = '1') and          -- forward_B:
          (EX_wreg = '0') and (EX_a_c = a_rt) and (EX_a_c /= b"00000") ) then
       br_stall <= '1';
       eq_fwd_B <= regs_B;
-    elsif ((MM_wreg = '0') and (MM_a_c = a_rt) and (MM_a_c /= b"00000")
-           and (MM_aVal = '0')) then    -- LW load-delay slot
-      if (is_branch = '1') then
-        br_stall <= '1';
+    elsif ((MM_wreg = '0') and (MM_a_c = a_rt) and (MM_a_c /= b"00000")) then
+      if (MM_aVal = '0') then    -- LW load-delay slot
+        if (is_branch = '1') then
+          br_stall <= '1';
+        end if;
+        eq_fwd_B <= regs_B;
+      else    -- non-LW
+        if MM_mfc0 /= '1' then
+          eq_fwd_B <= MM_result;
+        else
+          eq_fwd_B <= MM_cop0_val;
+        end if;
       end if;
-      eq_fwd_B <= regs_B;
-    elsif ((MM_wreg = '0') and (MM_a_c = a_rt) and (MM_a_c /= b"00000")
-           and (MM_aVal = '1')) then    -- non-LW
-      if MM_mfc0 /= '1' then
-        eq_fwd_B <= MM_result;
-      else
-        eq_fwd_B <= MM_cop0_val;
-      end if;
-      -- eq_fwd_B <= MM_result;
     else
       eq_fwd_B <= regs_B;
     end if;
@@ -1043,7 +1045,7 @@ begin
   
   RF_DECODE_FUNCT: process (opcode,IF_RF_ld,ctrl_word,funct_word,rimm_word,
                             func,shamt, a_rs,a_rd, STATUS, addrError,
-                            RF_excp_type,MM_excp_type)
+                            RF_excp_type,RF_instruction,MM_excp_type)
     variable i_wreg : std_logic;
     variable i_csel : reg2;
     variable i_oper : t_alu_fun := opNOP;
@@ -1242,6 +1244,7 @@ begin
 
   EX_FORWARDING_ALU: process (EX_a_rs,EX_a_rt,EX_a_c,
                               MM_a_c,MM_wreg,WB_a_c,WB_wreg,
+                              MM_mfc0,MM_cop0_val,
                               EX_A,EX_B,MM_result,WB_C)
     variable i_A,i_B : reg32;
   begin
@@ -1297,7 +1300,6 @@ begin
                   or abort;             -- abort ref if exception in MEM
 
   abort <= '1' when (addrError or (tlb_exception and tlb_stage_mm)) else '0';
-  -- abort <= '1' when (addrError) else '0';
 
   
   -- this adder performs address calculation so the TLB can be checked during
@@ -1485,11 +1487,11 @@ begin
 
 
   -- forwarding for LWL, LWR
-  MM_FWD_LWLR: process (MM_aVal,MM_wreg_cond,MM_a_rt,WB_a_c,WB_wreg,WB_C,MM_B)
+  MM_FWD_LWLR: process (MM_aVal,MM_wreg,MM_a_rt,WB_a_c,WB_wreg,WB_C,MM_B)
     variable f_m: std_logic;
     variable i_data : reg32;
   begin
-    FORWARD_M: if ( (MM_wreg_cond = '0') and (MM_aVal = '0') and
+    FORWARD_M: if ( (MM_wreg = '0') and (MM_aVal = '0') and
                     (MM_a_rt = WB_a_c) and (WB_wreg = '0') and
                     (WB_a_c /= b"00000") ) then
       f_m    := '1';                  -- forward from WB
@@ -1515,7 +1517,7 @@ begin
               MM_a_c,WB_a_c, MM_wreg_cond,WB_wreg, MM_muxC,WB_muxC,
               MM_A,WB_A, MM_result,WB_result, MM_HI,WB_HI,MM_LO,WB_LO,
               rd_data,WB_rd_data, MM_B_data,WB_B_data,
-              MM_result(1 downto 0),WB_addr2, MM_mem_t(3 downto 2),WB_mem_t,
+              MM_addr(1 downto 0),WB_addr2, MM_mem_t(3 downto 2),WB_mem_t,
               MM_pc_p8,WB_pc_p8);
 
   -- WRITE BACK -----------------------------------------------------------
@@ -1627,15 +1629,15 @@ begin
          (EX_wreg = '0') and (EX_a_c = a_rs) and (EX_a_c /= b"00000") ) then
       tr_stall <= '1';
       tr_fwd_A <= regs_A;
-    elsif ((MM_wreg = '0') and (MM_a_c = a_rs) and (MM_a_c /= b"00000")
-           and (MM_aVal = '0')) then    -- LW load-delay slot
-      if (is_trap = '1') then
-        tr_stall <= '1';
+    elsif ((MM_wreg = '0') and (MM_a_c = a_rs) and (MM_a_c /= b"00000")) then
+      if (MM_aVal = '0') then    -- LW load-delay slot
+        if (is_trap = '1') then
+          tr_stall <= '1';
+        end if;
+        tr_fwd_A <= regs_A;
+      else    -- non-LW
+        tr_fwd_A <= MM_result;
       end if;
-      tr_fwd_A <= regs_A;
-    elsif ((MM_wreg = '0') and (MM_a_c = a_rs) and (MM_a_c /= b"00000")
-           and (MM_aVal = '1')) then    -- non-LW
-      tr_fwd_A <= MM_result;
     else
       tr_fwd_A <= regs_A;
     end if;
@@ -1646,15 +1648,15 @@ begin
          (EX_wreg = '0') and (EX_a_c = a_rt) and (EX_a_c /= b"00000") ) then
       tr_stall <= '1';
       tr_fwd_B <= regs_B;
-    elsif ((MM_wreg = '0') and (MM_a_c = a_rt) and (MM_a_c /= b"00000")
-           and (MM_aVal = '0')) then    -- LW load-delay slot
-      if (is_trap = '1') then
-        tr_stall <= '1';
+    elsif ((MM_wreg = '0') and (MM_a_c = a_rt) and (MM_a_c /= b"00000")) then
+      if (MM_aVal = '0') then    -- LW load-delay slot
+        if (is_trap = '1') then
+          tr_stall <= '1';
+        end if;
+        tr_fwd_B <= regs_B;
+      else    -- non-LW
+        tr_fwd_B <= MM_result;
       end if;
-      tr_fwd_B <= regs_B;
-    elsif ((MM_wreg = '0') and (MM_a_c = a_rt) and (MM_a_c /= b"00000")
-           and (MM_aVal = '1')) then    -- non-LW
-      tr_fwd_B <= MM_result;
     else
       tr_fwd_B <= regs_B;
     end if;
@@ -1702,14 +1704,12 @@ begin
     variable i_update,i_epc_update,i_stall,i_nullify,i_take_trap : std_logic;
     variable i_a_c,i_update_r : reg5;
     variable i_epc_source : reg3;
-    variable i_excp_PCsel : reg3;
 
   begin
 
     newSTATUS    := STATUS;      
     i_epc_update := '1';
     i_epc_source := EPC_src_PC;
-    i_excp_PCsel := PCsel_EXC_none;     -- PC <= normal processing PC
     i_update     := '0';
     i_update_r   := b"00000";
     i_a_c        := b"00000";
@@ -1807,7 +1807,6 @@ begin
         i_update     := '1';
         i_update_r   := cop0reg_STATUS;
         i_stall      := '0';            -- do not stall
-        i_excp_PCsel := PCsel_EXC_EPC;  -- PC <= EPC
         i_nullify    := '1';            -- nullify instructions in IF,RF
 
         
@@ -1853,7 +1852,6 @@ begin
             i_epc_source  := EPC_src_RF; -- RF_PC
             is_delayslot  <= RF_is_delayslot;
           end if;
-          i_excp_PCsel := PCsel_EXC_0180;-- PC <= exception_180
         else
           trap_taken <= '0';
         end if;
@@ -1878,7 +1876,6 @@ begin
         i_update        := '1';
         i_update_r      := cop0reg_STATUS;
         i_epc_update    := '0';
-        i_excp_PCsel    := PCsel_EXC_0180; -- PC <= exception_0180
         ExcCode         <= cop0code_Ov;
         i_nullify       := '1';         -- nullify instructions in IF,RF
         nullify_EX      <= '1';         -- and instruction in EX
@@ -1899,7 +1896,6 @@ begin
         i_update        := '1';
         i_update_r      := cop0reg_STATUS;
         i_epc_update    := '0';
-        i_excp_PCsel    := PCsel_EXC_0180;
         if is_exception = MMaddressErrorST then
           ExcCode <= cop0code_AdES;
         else
@@ -1955,7 +1951,6 @@ begin
         newSTATUS(STATUS_IE)  := '0';       -- disable interrupts
         i_update        := '1';
         i_update_r      := cop0reg_STATUS;
-        i_excp_PCsel := PCsel_EXC_0000;     -- PC <= exception_0000
         i_epc_update := '0';
 
 
@@ -2004,7 +1999,6 @@ begin
         newSTATUS(STATUS_IE)  := '0';       -- disable interrupts
         i_update     := '1';
         i_update_r   := cop0reg_STATUS;
-        i_excp_PCsel := PCsel_EXC_0180;     -- PC <= exception_0180
         i_epc_update := '0';
 
         
@@ -2032,7 +2026,6 @@ begin
             i_epc_source := EPC_src_RF; -- RF_PC
             is_delayslot <= RF_is_delayslot;
           end if;
-          i_excp_PCsel := PCsel_EXC_0000; -- PC <= exception_0000
         
         elsif ( (STATUS(STATUS_EXL) = '0') and (STATUS(STATUS_ERL) = '0') and
                 (STATUS(STATUS_IE) = '1')  and (EX_interrupt = '1')  and
@@ -2056,11 +2049,6 @@ begin
             i_epc_source := EPC_src_RF; -- RF_PC
             is_delayslot <= RF_is_delayslot;
           end if;
-          if CAUSE(CAUSE_IV) = '1' then
-            i_excp_PCsel := PCsel_EXC_0200; -- PC <= exception_0200
-          else
-            i_excp_PCsel := PCsel_EXC_0180; -- PC <= exception_0180
-          end if;
 
         end if; -- NMI or else interrupt 
 
@@ -2078,13 +2066,69 @@ begin
       epc_update   <= i_epc_update OR STATUS(STATUS_EXL);
     end if;
     epc_source   <= i_epc_source;
-    excp_PCsel   <= i_excp_PCsel;
 
     exception_stall <= i_stall;
     nullify         <= i_nullify;
     
   end process COP0_DECODE_EXCEPTION_AND_UPDATE_STATUS;
 
+
+  -- Select input to PC on an exception --------------------
+  COP0_SEL_EPC: process (is_exception, EX_nmi, EX_interrupt, STATUS, CAUSE,
+                         trap_taken, rom_stall, ram_stall)
+    variable i_excp_PCsel : reg3;
+  begin
+
+    i_excp_PCsel := PCsel_EXC_none;     -- PC <= normal processing PC
+    
+    case is_exception is
+
+      when exERET =>            -- exception return
+        i_excp_PCsel := PCsel_EXC_EPC;    -- PC <= EPC
+        
+      when exSYSCALL | exBREAK | exRESV_INSTR | exOvfl
+           | IFaddressError | MMaddressErrorLD | MMaddressErrorST 
+           | exTLBdblFaultIF | exTLBdblFaultRD | exTLBdblFaultWR 
+           | exTLBinvalIF | exTLBinvalRD | exTLBinvalWR | exTLBmod =>
+        i_excp_PCsel := PCsel_EXC_0180;   -- PC <= exception_180
+
+      when exTRAP =>
+        if trap_taken = '1' then
+          i_excp_PCsel := PCsel_EXC_0180; -- PC <= exception_180
+        else
+          i_excp_PCsel := PCsel_EXC_none;
+        end if;
+        
+      when exTLBrefillIF | exTLBrefillRD | exTLBrefillWR =>
+        i_excp_PCsel := PCsel_EXC_0000;     -- PC <= exception_0000
+
+      when others =>                    -- interrupt pending?
+
+        if ( (EX_nmi = '1') and (STATUS(STATUS_ERL) = '0') ) then
+          -- non maskable interrupt
+          i_excp_PCsel := PCsel_EXC_0000; -- PC <= exception_0000
+        
+        elsif ( (STATUS(STATUS_EXL) = '0') and (STATUS(STATUS_ERL) = '0') and
+                (STATUS(STATUS_IE) = '1')  and (EX_interrupt = '1')  and
+                (rom_stall = '0' and ram_stall = '0')) then
+          -- normal interrupt
+          if CAUSE(CAUSE_IV) = '1' then
+            i_excp_PCsel := PCsel_EXC_0200; -- PC <= exception_0200
+          else
+            i_excp_PCsel := PCsel_EXC_0180; -- PC <= exception_0180
+          end if;
+        else
+          i_excp_PCsel := PCsel_EXC_none;   -- should never get here
+        end if; -- NMI or else interrupt 
+
+    end case;
+
+    excp_PCsel   <= i_excp_PCsel;
+    
+  end process COP0_SEL_EPC;
+
+
+  
 
   COP0_FORWARDING:
   process (EX_a_rt,EX_a_c, MM_a_c,MM_wreg,MM_result, WB_a_c,WB_wreg, 
@@ -2093,17 +2137,13 @@ begin
   begin
     if ((MM_wreg = '0')and(MM_a_c /= b"00000")and(MM_a_c = EX_a_rt)) then
       i_B := MM_result;
-      -- assert false report "FWD_cop0 MM: inp="&SLV32HEX(cop0_inp); -- DEBUG
-    elsif ((WB_wreg = '0')and(WB_a_c /= b"00000")and(WB_a_c = EX_a_rt)) then
-      i_B := WB_C;
-      -- assert false report "FWD_cop0 WB: inp="&SLV32HEX(cop0_inp); -- DEBUG
     elsif ((MM_wreg = '0')and
            (MM_cop0_a_c /= b"00000")and(MM_cop0_a_c = EX_cop0_a_c)) then
       i_B := MM_cop0_val;
-      -- assert false report "FWD_cop0 CP: inp="&SLV32HEX(cop0_inp); -- DEBUG
+    elsif ((WB_wreg = '0')and(WB_a_c /= b"00000")and(WB_a_c = EX_a_rt)) then
+      i_B := WB_C;
     else
       i_B := EX_B;
-      -- assert false report "FWD_cop0 EX: inp="&SLV32HEX(cop0_inp); -- DEBUG
     end if;
     cop0_inp <= i_B;
   end process COP0_FORWARDING;
@@ -2122,7 +2162,7 @@ begin
   -- CAUSE -- pg 92-- cop0_13 --------------------------
   COP0_COMPUTE_CAUSE: process(rst, update,update_reg,
                               EX_int_req, ExcCode, cop0_inp, is_delayslot,
-                              count_eq_compare,count_enable, CAUSE)
+                              count_eq_compare,count_enable, STATUS, CAUSE)
     variable newCAUSE : reg32;
   begin
 
@@ -2247,11 +2287,11 @@ begin
   LL_SC_abort <= (LL_SC_differ or EX_LLbit) when (is_exception = exSC) else
                  '0';
   
-  COP0_LLbit: process(rst,phi2)
+  COP0_LLbit: process(rst,clk)
   begin
     if rst = '0' then
       EX_LLbit    <= '0';             -- break SC -> LL
-    elsif rising_edge(phi2) then
+    elsif rising_edge(clk) then
       case is_exception is
         when exERET =>
           EX_LLbit <= '0';            -- break SC -> LL
@@ -2306,16 +2346,16 @@ begin
   -- MMU Random -- cop0_1 ------------------------
 
   MMU_Random: process(clk, rst, WIRED, wired_update)
-    variable count : integer range -1 to MMU_CAPACITY-1;
+    variable count : integer range -1 to MMU_CAPACITY-1 := MMU_CAPACITY-1;
   begin
-    if rst = '0' or wired_update = '0' then
-      count := MMU_CAPACITY - 1 ;
+    if rst = '0' then
+      count := MMU_CAPACITY - 1;
     elsif rising_edge(clk) then
       count := count - 1;
-      if count = to_integer(unsigned(WIRED))-1 then
+      if count = to_integer(unsigned(WIRED))-1 or wired_update = '0' then
         count := MMU_CAPACITY - 1;
       end if;
-    end if;
+      end if;
     RANDOM <= std_logic_vector(to_signed(count, 32));
   end process MMU_Random;
 
@@ -2402,7 +2442,7 @@ begin
 
  
   -- -- pg 41 ----------------------------------
-  MMU_exceptions: process(EX_wrmem, EX_aVal, tlb_miss, hit_mm, hit_pc,
+  MMU_exceptions: process(iaVal, EX_wrmem, EX_aVal, tlb_miss, hit_mm, hit_pc,
                           hit_mm_v, hit_mm_d, hit_pc_v, STATUS)
     variable i_stage_mm : boolean;
   begin
@@ -2461,6 +2501,7 @@ begin
 
     else
       TLB_excp_type <= exNOP;
+      i_stage_mm := FALSE;
     end if;
 
     tlb_stage_MM <= i_stage_mm;
@@ -2497,29 +2538,29 @@ begin
     tlb_dat5_updt <= '1';
     tlb_dat6_updt <= '1';
     tlb_dat7_updt <= '1';
-    tlb_read      <= '0';
-    tlb_probe     <= '0';
-
+    
     case EX_exception is
       when exTLBP =>
         
         tlb_probe <= '1';
+        tlb_read  <= '0';
+        i_tlb_adr := 0;
 
       when exTLBR => 
 
+        tlb_probe <= '0';
         tlb_read  <= '1';
         i_tlb_adr := to_integer(unsigned(INDEX(MMU_CAPACITY-1 downto 0)));
 
       when exTLBWI | exTLBWR => 
 
-        case EX_exception is
-          when exTLBWI =>
-            i_tlb_adr := to_integer(unsigned(INDEX(MMU_CAPACITY-1 downto 0)));
-          when exTLBWR =>
-            i_tlb_adr := to_integer(unsigned(RANDOM));
-          when others => null;
-        end case;
-
+        tlb_probe <= '0';
+        tlb_read  <= '0';
+        if EX_exception = exTLBWI then
+          i_tlb_adr := to_integer(unsigned(INDEX(MMU_CAPACITY-1 downto 0)));
+        else
+          i_tlb_adr := to_integer(unsigned(RANDOM));
+        end if;
         case i_tlb_adr is
           when 0 => tlb_tag0_updt <= '0'; tlb_dat0_updt <= '0';
           when 1 => tlb_tag1_updt <= '0'; tlb_dat1_updt <= '0';
@@ -2532,10 +2573,13 @@ begin
           when others => null;
         end case;
           
-      when others => null;
+      when others => 
+        tlb_probe <= '0';
+        tlb_read  <= '0';
+        i_tlb_adr := 0;
 
     end case;    
-
+    
     tlb_adr <= i_tlb_adr;
     
   end process MMU_CONTROL;  ------------------------------------------------

@@ -252,7 +252,7 @@ begin
   operation <= t_alu_fun'pos(fun);   -- for debugging only
   
   U_alu: process (A,B, fun, sh_left,sh_right,sh_lft_ins,
-                  mask, loc_HI,loc_LO, summ_diff, overflow)
+                  mask, loc_HI,loc_LO, summ_diff, summ_diff_u, overflow)
     variable i_C, i_and, i_or: reg32;
     variable i_move_ok, B_is_zero : std_logic := 'L';
   begin
