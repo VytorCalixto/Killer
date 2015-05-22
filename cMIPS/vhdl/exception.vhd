@@ -85,10 +85,8 @@ entity reg_excp_RF_EX is
        EX_interrupt:    out std_logic;
        RF_int_req:      in  reg8;
        EX_int_req:      out reg8;
-       RF_tr_is_equal:  in  std_logic;
-       EX_tr_is_equal:  out std_logic;
-       RF_tr_less_than: in  std_logic;
-       EX_tr_less_than: out std_logic);
+       RF_trap_taken:   in  boolean;
+       EX_trapped:      out boolean);
 end reg_excp_RF_EX;
 
 architecture funcional of reg_excp_RF_EX is
@@ -98,6 +96,7 @@ begin
     if rst = '0' then
       EX_can_trap     <= b"00";
       EX_is_delayslot <= '0';
+      EX_trapped      <= FALSE;
     elsif rising_edge(clk) then
       if ld = '0' then
         EX_can_trap     <= RF_can_trap     ;
@@ -111,8 +110,7 @@ begin
         EX_nmi          <= RF_nmi          ;
         EX_interrupt    <= RF_interrupt    ;
         EX_int_req      <= RF_int_req      ;
-        EX_tr_is_equal  <= RF_tr_is_equal  ;
-        EX_tr_less_than <= RF_tr_less_than ;
+        EX_trapped      <= RF_trap_taken   ;
       end if;
     end if;
   end process;
@@ -145,8 +143,8 @@ entity reg_excp_EX_MM is
        MM_cop0_a_c:   out reg5;
        EX_cop0_val:   in  reg32;
        MM_cop0_val:   out reg32;
-       EX_trapped:    in  std_logic;
-       MM_ex_trapped: out std_logic;
+       EX_ovfl:       in  boolean;
+       MM_ex_ovfl:    out boolean;
        EX_mfc0:       in  std_logic;
        MM_mfc0:       out std_logic);
 end reg_excp_EX_MM;
@@ -158,19 +156,19 @@ begin
     if rst = '0' then
       MM_can_trap   <= b"00";
       MM_cop0_LLbit <= '0';
-      MM_ex_trapped <= '0';
+      MM_ex_ovfl    <= FALSE;
     elsif rising_edge(clk) then
       if ld = '0' then
-        MM_excp_type    <= EX_excp_type  ;
-        MM_can_trap     <= EX_can_trap   ;
-        MM_PC           <= EX_PC         ;
-        MM_cop0_LLbit   <= EX_cop0_LLbit ;
-        MM_abort        <= addrError     ;
+        MM_excp_type    <= EX_excp_type   ;
+        MM_can_trap     <= EX_can_trap    ;
+        MM_PC           <= EX_PC          ;
+        MM_cop0_LLbit   <= EX_cop0_LLbit  ;
+        MM_abort        <= addrError      ;
         MM_is_delayslot <= EX_is_delayslot;
-        MM_cop0_a_c     <= EX_cop0_a_c   ;
-        MM_cop0_val     <= EX_cop0_val   ;
-        MM_ex_trapped   <= EX_trapped    ;
-        MM_mfc0         <= EX_mfc0       ;
+        MM_cop0_a_c     <= EX_cop0_a_c    ;
+        MM_cop0_val     <= EX_cop0_val    ;
+        MM_ex_ovfl      <= EX_ovfl        ;
+        MM_mfc0         <= EX_mfc0        ;
       end if;
     end if;
   end process;
@@ -191,8 +189,8 @@ entity reg_excp_MM_WB is
        WB_can_trap:   out reg2;
        MM_excp_type:  in  exception_type;
        WB_excp_type:  out exception_type;
-       MM_PC:         in  std_logic_vector;
-       WB_PC:         out std_logic_vector;
+       MM_PC:         in  reg32;
+       WB_PC:         out reg32;
        MM_cop0_LLbit: in  std_logic;
        WB_cop0_LLbit: out std_logic;
        MM_abort:      in  boolean;
