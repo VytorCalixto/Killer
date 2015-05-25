@@ -358,7 +358,9 @@ architecture TB of tb_cMIPS is
   component core is
     port (rst    : in    std_logic;
           clk    : in    std_logic;
+          phi1   : in    std_logic;
           phi2   : in    std_logic;
+          phi3   : in    std_logic;
           i_aVal : out   std_logic;
           i_wait : in    std_logic;
           i_addr : out   std_logic_vector;
@@ -399,14 +401,14 @@ architecture TB of tb_cMIPS is
   
   signal clock_50mhz, clk,clkin : std_logic;
   signal clk4x,clk4x0, clk4x180, clk2x : std_logic;
-  signal phi0,phi1,phi2,phi3,phi0in,phi2in,phi3in, phi2_dlyd : std_logic;
+  signal phi0,phi1,phi2,phi3,phi0in,phi1in,phi2in,phi3in, phi2_dlyd : std_logic;
   signal rst,ic_reset,a_rst1,a_rst2,a_rst3, cpu_reset : std_logic;
   signal a_reset, async_reset : std_logic;
   signal cpu_i_aVal, cpu_i_wait, wr, cpu_d_aVal, cpu_d_wait : std_logic;
   signal nmi : std_logic;
   signal irq : reg6;
   signal inst_aVal, inst_wait, rom_rdy : std_logic := '1';
-  signal data_aVal, data_wait, ram_rdy, mem_wr, mem_strobe : std_logic;
+  signal data_aVal, data_wait, ram_rdy, mem_wr : std_logic;
   signal cpu_xfer, mem_xfer, dev_select, dev_select_ram, dev_select_io : reg4;
   signal io_print_sel,   io_print_wait   : std_logic := '1';
   signal io_stdout_sel,  io_stdout_wait  : std_logic := '1';
@@ -452,7 +454,7 @@ begin  -- TB
 
 
   pll : mf_altpll port map (areset => a_reset, inclk0 => clock_50mhz,
-   c0 => phi0in, c1 => mem_strobe, c2 => phi2in, c3 => phi3in, c4 => clkin);
+   c0 => phi0in, c1 => phi1in, c2 => phi2in, c3 => phi3in, c4 => clkin);
 
   -- clk and clk4x must be in opposite phases
   pll_io : mf_altpll_io port map (areset => a_reset, inclk0 => clock_50mhz,
@@ -464,9 +466,10 @@ begin  -- TB
   mf_altclkctrl_inst_clk4x : mf_altclkctrl port map (
     inclk => clk4x180, outclk => clk4x);
 
-  phi1 <= '0';
   mf_altclkctrl_inst_phi0 : mf_altclkctrl port map (
     inclk => phi0in, outclk => phi0);
+  mf_altclkctrl_inst_phi1 : mf_altclkctrl port map (
+    inclk => phi1in, outclk => phi1);
   mf_altclkctrl_inst_phi2 : mf_altclkctrl port map (
     inclk => phi2in, outclk => phi2);
   mf_altclkctrl_inst_phi3 : mf_altclkctrl port map (
@@ -499,7 +502,7 @@ begin  -- TB
   nmi <= '0'; -- input port to TB
 
   
-  U_CORE: core port map (cpu_reset, clk, phi2,
+  U_CORE: core port map (cpu_reset, clk, phi1,phi2,phi3,
                          cpu_i_aVal, cpu_i_wait, i_addr, cpu_instr,
                          cpu_d_aVal, cpu_d_wait, d_addr, cpu_data_inp, cpu_data,
                          wr, cpu_xfer, nmi, irq);
@@ -516,10 +519,10 @@ begin  -- TB
 
   U_ROM: simul_ROM generic map ("prog.bin")
   -- U_ROM: fpga_ROM generic map ("prog.bin")
-    port map (rst, clk, mem_i_sel,rom_rdy, phi2, mem_i_addr,datrom);
+    port map (rst, clk, mem_i_sel,rom_rdy, phi3, mem_i_addr,datrom);
 
   U_IO_ADDR_DEC: io_addr_decode
-    port map (phi3,rst, cpu_d_aVal, d_addr, dev_select_io,
+    port map (phi0,rst, cpu_d_aVal, d_addr, dev_select_io,
               io_print_sel, io_stdout_sel, io_stdin_sel,io_read_sel, 
               io_write_sel, io_counter_sel, io_fpu_sel, io_uart_sel,
               io_sstats_sel, io_7seg_sel, io_keys_sel, io_lcd_sel,
@@ -554,7 +557,7 @@ begin  -- TB
 
   U_RAM: simul_RAM generic map ("data.bin", "dump.data")
   -- U_RAM: fpga_RAM generic map ("data.bin", "dump.data")
-    port map (rst, clk, mem_d_sel, ram_rdy, mem_wr, phi2,
+    port map (rst, clk, mem_d_sel, ram_rdy, mem_wr, phi3,
               mem_addr, datram_out, datram_inp, mem_xfer, dump_ram);
   
   U_read_inp: read_data_file generic map ("input.data")

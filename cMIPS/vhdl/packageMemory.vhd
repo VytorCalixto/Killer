@@ -29,9 +29,9 @@ package p_MEMORY is
   --   which means having an adder in the critical path.  Not good.
 
   -- The address ranges for ROM, RAM and I/O must be distinct in the
-  --   uppermost 12 bits of the address (bits 31..20).
+  --   uppermost 12 bits of the address (bits 31..16).
   constant HI_SEL_BITS : integer := 31;
-  constant LO_SEL_BITS : integer := 20;
+  constant LO_SEL_BITS : integer := 16;
 
   
   -- x_IO_ADDR_RANGE can have only ONE bit set, thus being a power of 2.

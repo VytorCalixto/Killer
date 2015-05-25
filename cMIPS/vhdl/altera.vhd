@@ -183,7 +183,7 @@ entity mf_altpll is port (
     areset          : IN  STD_LOGIC;
     inclk0          : IN  STD_LOGIC;    -- 50MHz input
     c0              : OUT STD_LOGIC;    -- 50MHz, 25% duty cycle, phase 0
-    c1              : OUT STD_LOGIC;    -- 50MHz, 25% duty cycle, phase 225
+    c1              : OUT STD_LOGIC;    -- 50MHz, 25% duty cycle, phase 120
     c2              : OUT STD_LOGIC;    -- 50MHz, 25% duty cycle, phase 180
     c3              : OUT STD_LOGIC;    -- 50MHz, 25% duty cycle, phase 270
     c4              : OUT STD_LOGIC);   -- 50MHz, 50% duty cycle, phase 0
@@ -215,12 +215,12 @@ begin
   U_4PHASE_CLOCK: count4phases
     port map (clk4x, areset, phi0,phi1,phi2,phi3);
 
-  U_DELAY_PHI2: FFD port map (clk4x, areset, '1', phi2, phi2_dlyd);
+  -- U_DELAY_PHI2: FFD port map (clk4x, areset, '1', phi2, phi2_dlyd);
 
-  c0 <= phi0;
-  c1 <= phi2_dlyd;
+  c0 <= phi3;
+  c1 <= phi0;
   c2 <= phi1;
-  c3 <= phi3;
+  c3 <= phi2;
   c4 <= inclk0;
   
 end architecture functional;
