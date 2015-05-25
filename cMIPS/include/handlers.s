@@ -71,7 +71,7 @@ extCounter:
 	# interrupt handler for UART attached to IP6=HW4
 
 	.bss 
-        .align  2
+    .align  2
 	.set noreorder
 	.global rx_queue,rx_hd,rx_tl   # reception queue and pointers
 	.comm   rx_queue 16
@@ -118,13 +118,13 @@ UARTinterr:
 	# andi  $a0, $k1, UART_rx_irq # Is this reception?
 	# beq   $a0, $zero, UARTret   #   no, ignore it and return
 	
-	lui   $a0, %hi(HW_uart_addr)
-	ori   $a0, $a0, %lo(HW_uart_addr)
-	lw    $a1, 4($a0) 	    # Read data
-	nop                         #   and store it to UART's buffer
-	sw    $a1, 4($k0)           #   and return from interrupt
-	addiu $a1, $zero, 1
-	sw    $a1, 8($k0)           # Signal new arrival 
+	# lui   $a0, %hi(HW_uart_addr)
+	# ori   $a0, $a0, %lo(HW_uart_addr)
+	# lw    $a1, 4($a0) 	    # Read data
+	# nop                         #   and store it to UART's buffer
+	# sw    $a1, 4($k0)           #   and return from interrupt
+	# addiu $a1, $zero, 1
+	# sw    $a1, 8($k0)           # Signal new arrival 
 		
 UARTret:
 	lw    $a1, 16($k0)          # restore registers $a0,$a1, others?

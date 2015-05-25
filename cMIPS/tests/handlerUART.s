@@ -3,7 +3,14 @@
 RX:
     andi  $a0, $k1, UART_rx_irq # Is this reception?
     beq   $a0, $zero, TX        #   no, test if it's transmission
-    nop
+    
+    lui   $a0, %hi(HW_uart_addr)
+    ori   $a0, $a0, %lo(HW_uart_addr)
+    lw    $a1, 4($a0)           # Read data
+    nop                         #   and store it to UART's buffer
+    sw    $a1, 4($k0)           #   and return from interrupt
+    addiu $a1, $zero, 1
+    sw    $a1, 8($k0)           # Signal new arrival 
     # TODO: Read data, store it to buffer and decrement nrx (we're reading a char)
 TX:
     andi $a0, $k1, UART_tx_irq  # Is this transmission?
