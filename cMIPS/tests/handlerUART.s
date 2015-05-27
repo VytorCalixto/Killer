@@ -1,5 +1,8 @@
     #--------------------------------------------------------------------------
     # interrupt handler for UART
+    #.set HW_uart_control,(x_IO_BASE_ADDR +  ? * x_IO_ADDR_RANGE)
+    .comm uart_control 56 #TODO setar endereço no MIPS p/ acessar no C
+
 RX:
     andi  $a0, $k1, UART_rx_irq # Is this reception?
     beq   $a0, $zero, TX        #   no, test if it's transmission

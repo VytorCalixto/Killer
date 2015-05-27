@@ -2,7 +2,7 @@
 	.include "cMIPS.s"
 	.text
 	.set noreorder
-        .align 2
+    .align 2
 
 	.set M_StatusIEn,0x0000ff09     # STATUS.intEn=1, user mode
 	
@@ -73,17 +73,17 @@ extCounter:
 	.bss 
     .align  2
 	.set noreorder
-	.global rx_queue,rx_hd,rx_tl   # reception queue and pointers
-	.comm   rx_queue 16
-	.comm   rx_hd 4
-	.comm   rx_tl 4
-	.global tx_queue,tx_hd,tx_tl   # transmission queue and pointers
-	.comm   tx_queue 16
-	.comm   tx_hd 4
-	.comm   tx_tl 4
-	.global nrx,ntx
-	.comm   nrx 4                  # characters in RX_queue
-	.comm   ntx 4                  # spaces left in TX_queue
+	# .global rx_queue,rx_hd,rx_tl   # reception queue and pointers
+	# .comm   rx_queue 16
+	# .comm   rx_hd 4
+	# .comm   rx_tl 4
+	# .global tx_queue,tx_hd,tx_tl   # transmission queue and pointers
+	# .comm   tx_queue 16
+	# .comm   tx_hd 4
+	# .comm   tx_tl 4
+	# .global nrx,ntx
+	# .comm   nrx 4                  # characters in RX_queue
+	# .comm   ntx 4                  # spaces left in TX_queue
     .comm   _uart_buff 16*4        # up to 16 registers to be saved here
 
 	.set UART_rx_irq,0x08

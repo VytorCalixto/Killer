@@ -39,15 +39,26 @@ typedef struct serial {
   Tdata    d;            // TX & RX registers at address UART + 4
 } Tserial;
 
+typedef struct{
+  char rx_queue[16];
+  int rx_hd;
+  int rx_tl;
+  int nrx;               // characters in RX_queue
+  char tx_queue[16];
+  int tx_hd;
+  int tx_tl;
+  int ntx;               // spaces left in TX_queue
+} UartControl;
+
 int proberx(void);       // retorna nrx
 int probetx(void);       // retorna ntx
 int iostat(void);        // retorna inteiro com status no byte menos sign
 void ioctl(int);         // escreve byte menos sign no reg de controle
 char getc(void);         // retorna caractere na fila, decrementa nrx
-void putc(char);         // insere caractere na fila, decrementa ntx
+//void putc(char);         // insere caractere na fila, decrementa ntx
 int wrtc(char);          // escreve caractere diretamente em txreg
-int enableInterr(void);  // habilita interrupcoes, retorna STATUS
-int disableInterr(void); // desabilita interrupcoes, retorna STATUS
+
+extern UartControl uart_control;
 
 int main(void){
     int i;
