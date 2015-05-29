@@ -35,8 +35,8 @@ typedef union data {    // data registers on same address
 } Tdata;
 
 typedef struct serial {
-  TctlStat cs;
-  Tdata    d;
+  TctlStat cs;          // @ (int *)IO_UART_ADDR
+  Tdata    d;           // @ (int *)(IO_UART_ADDR+1)
 } Tserial;
 
 
@@ -56,7 +56,7 @@ int main(void) { // receive a string through the UART serial interface
   ctrl.speed = 1;    // operate at 1/2 of the highest data rate
   uart->cs.ctl = ctrl;
 
-  // handler sets flag=bfr[2] to 1 after new character is read;
+  // handler sets flag=bfr[2] to 1 after new character is received;
   // this program resets the flag on fetching a new character from buffer
 
   c = (char)bfr[2];   // interrupt handler's flag

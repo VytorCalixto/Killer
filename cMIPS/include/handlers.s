@@ -73,18 +73,16 @@ extCounter:
 	.bss 
         .align  2
 	.set noreorder
-	.global rx_queue,rx_hd,rx_tl   # reception queue and pointers
-	.comm   rx_queue 16
+	.global Ud
+Ud:	.comm   rx_queue 16       # reception queue and pointers
 	.comm   rx_hd 4
 	.comm   rx_tl 4
-	.global tx_queue,tx_hd,tx_tl   # transmission queue and pointers
-	.comm   tx_queue 16
+	.comm   tx_queue 16       # transmission queue and pointers
 	.comm   tx_hd 4
 	.comm   tx_tl 4
-	.global nrx,ntx
-	.comm   nrx 4                  # characters in RX_queue
-	.comm   ntx 4                  # spaces left in TX_queue
-        .comm   _uart_buff 16*4        # up to 16 registers to be saved here
+	.comm   nrx 4             # characters in RX_queue
+	.comm   ntx 4             # spaces left in TX_queue
+        .comm   _uart_buff 16*4   # up to 16 registers to be saved here
 
 	.set UART_rx_irq,0x08
 	.set UART_tx_irq,0x10
