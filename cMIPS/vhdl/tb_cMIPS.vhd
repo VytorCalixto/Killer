@@ -522,7 +522,7 @@ begin  -- TB
     port map (rst, clk, mem_i_sel,rom_rdy, phi3, mem_i_addr,datrom);
 
   U_IO_ADDR_DEC: io_addr_decode
-    port map (phi0,rst, cpu_d_aVal, d_addr, dev_select_io,
+    port map (phi0, rst, cpu_d_aVal, d_addr, dev_select_io,
               io_print_sel, io_stdout_sel, io_stdin_sel,io_read_sel, 
               io_write_sel, io_counter_sel, io_fpu_sel, io_uart_sel,
               io_sstats_sel, io_7seg_sel, io_keys_sel, io_lcd_sel,
@@ -557,7 +557,7 @@ begin  -- TB
 
   U_RAM: simul_RAM generic map ("data.bin", "dump.data")
   -- U_RAM: fpga_RAM generic map ("data.bin", "dump.data")
-    port map (rst, clk, mem_d_sel, ram_rdy, mem_wr, phi3,
+    port map (rst, clk, mem_d_sel, ram_rdy, mem_wr, phi1,
               mem_addr, datram_out, datram_inp, mem_xfer, dump_ram);
   
   U_read_inp: read_data_file generic map ("input.data")
