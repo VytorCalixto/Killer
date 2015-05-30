@@ -8,16 +8,19 @@ typedef struct control { // control register fields (uses only ls byte)
 } Tcontrol;
 
 typedef struct status { // status register fields (uses only ls byte)
+#if 1
   int s;
-  // int ign   : 24,      // ignore uppermost bits
-  //  ign7    : 1,        // ignored (bit 7)
-  //  txEmpty : 1,        // TX register is empty (bit 6)
-  //  rxFull  : 1,        // octet available from RX register (bit 5)
-  //  int_TX_empt: 1,     // interrupt pending on TX empty (bit 4)
-  //  int_RX_full: 1,     // interrupt pending on RX full (bit 3)
-  //  ign2    : 1,        // ignored (bit 2)
-  //  framing : 1,        // framing error (bit 1)
-  //  overun  : 1;        // overun error (bit 0)
+#else
+  int ign : 24,       // ignore uppermost bits
+  ign7    : 1,        // ignored (bit 7)
+  txEmpty : 1,        // TX register is empty (bit 6)
+  rxFull  : 1,        // octet available from RX register (bit 5)
+  int_TX_empt: 1,     // interrupt pending on TX empty (bit 4)
+  int_RX_full: 1,     // interrupt pending on RX full (bit 3)
+  ign2    : 1,        // ignored (bit 2)
+  framing : 1,        // framing error (bit 1)
+  overun  : 1;        // overun error (bit 0)
+#endif
 } Tstatus;
 
 #define RXfull  0x00000020

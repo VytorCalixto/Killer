@@ -115,7 +115,8 @@ main:	la   $20, x_IO_BASE_ADDR
 	sw  $7, 8($4)
 	sw  $0, 12($4)
 
-	li $5, 7              # 2nd ROM mapping
+
+	li   $5, 2            # 2nd ROM mapping on 2nd PT element
 	mtc0 $5, cop0_Index
 	nop
 	tlbr
@@ -125,16 +126,38 @@ main:	la   $20, x_IO_BASE_ADDR
 	mfc0 $7, cop0_EntryLo1
 	# sw   $7, 0($20)
 
-	# 2nd entry: PPN2 & PPN3 ROM
+
+	# 2nd entry:  PPN2 & PPN3 I/O
 	sw  $6, 16($4)
 	sw  $0, 20($4)
 	sw  $7, 24($4)
 	sw  $0, 28($4)
 
+	
+	li $5, 3             # 3rd ROM mapping on 3rd PT element
+	mtc0 $5, cop0_Index
+	nop
+	tlbr
+
+	mfc0 $6, cop0_EntryLo0
+	# sw   $6, 0($20)
+	mfc0 $7, cop0_EntryLo1
+	# sw   $7, 0($20)
+
+	# 2nd entry: PPN4 & PPN5 ROM
+	sw  $6, 32($4)
+	sw  $0, 36($4)
+	sw  $7, 40($4)
+	sw  $0, 44($4)
+
 	# load Context with PTbase
 	mtc0 $4, cop0_Context
 	
+
 	## change mapping for 2nd ROM TLB entry, thus causing a miss
+
+	li   $5, 2          # 2nd ROM mapping
+	mtc0 $5, cop0_Index
 
 	li   $9, 0x2000
 	sll  $9, $9, 8
@@ -144,9 +167,13 @@ main:	la   $20, x_IO_BASE_ADDR
 	add  $8, $9, $8     # change tag
 
 	mtc0 $8, cop0_EntryHi
-
+	
 	tlbwi		    # and write it back to TLB
 
+	nop
+	nop
+	nop
+	
 	## cause a TLB miss
 
 	jal  there
