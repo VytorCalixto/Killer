@@ -1,9 +1,5 @@
     #--------------------------------------------------------------------------
     # interrupt handler for UART
-    .global uart_control
-    .comm uart_control 56 #TODO setar endereço no MIPS p/ acessar no C (?)
-    # uart_control[0]=rx_queue, [16]=rx_hd, [20]=rx_tl, [24]=nrx,
-    #           [28]=tx_queue, [44]=tx_hd, [48]=tx_tl, [52]=ntx
 
 RX:
     andi  $a0, $k1, UART_rx_irq # Is this reception?

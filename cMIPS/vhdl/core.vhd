@@ -845,7 +845,7 @@ begin
 
       -- simulation aborted by instruction "wait N"
       assert not(exception = exWAIT and syscall_n /= x"80000")
-        report LF & "INVALID REFERENCE at PC="& SLV32HEX(EPC) &
+        report LF & "INVALID REFERENCE at EPC="& SLV32HEX(EPC) &
         " opc="& SLV2STR(opcode) & " fun=" & SLV2STR(func) &
         " instr=" & SLV32HEX(RF_instruction) & 
         LF & "SIMULATION ABORTED AT EXCEPTION HANDLER;"
@@ -935,57 +935,50 @@ begin
   begin
     br_stall <= '0';
 
-    if ( (is_branch = '1') and          -- forward_A:
+    if ( (is_branch = '1') and          -- forward_A
          (EX_wreg = '0') and (EX_a_c = a_rs) and (EX_a_c /= b"00000") ) then
       br_stall <= '1';
       eq_fwd_A <= regs_A;
-    elsif ((MM_wreg = '0') and (MM_a_c = a_rs) and (MM_a_c /= b"00000")) then
-      if (MM_aVal = '0') then    -- LW load-delay slot
-        if (is_branch = '1') then
-          br_stall <= '1';
-        end if;
+    elsif ( (MM_wreg = '0') and (MM_a_c = a_rs) and (MM_a_c /= b"00000") ) then
+      if ( (MM_aVal = '0') and (is_branch = '1') ) then   -- LW load-delay slot
+        br_stall <= '1';
         eq_fwd_A <= regs_A;
-      else    -- non-LW
-        if MM_mfc0 /= '1' then
-          eq_fwd_A <= MM_result;
-        else
-          eq_fwd_A <= MM_cop0_val;
-        end if;
+      elsif MM_mfc0 = '1' then          -- non-LW
+        eq_fwd_A <= MM_cop0_val;
+      else
+        eq_fwd_A <= MM_result; 
       end if;
     else
       eq_fwd_A <= regs_A;
     end if;
 
-
-    if ( (is_branch = '1') and          -- forward_B:
+    if ( (is_branch = '1') and          -- forward_B
          (EX_wreg = '0') and (EX_a_c = a_rt) and (EX_a_c /= b"00000") ) then
       br_stall <= '1';
       eq_fwd_B <= regs_B;
-    elsif ((MM_wreg = '0') and (MM_a_c = a_rt) and (MM_a_c /= b"00000")) then
-      if (MM_aVal = '0') then    -- LW load-delay slot
-        if (is_branch = '1') then
-          br_stall <= '1';
-        end if;
+    elsif ( (MM_wreg = '0') and (MM_a_c = a_rt) and (MM_a_c /= b"00000") ) then
+      if ( (MM_aVal = '0') and (is_branch = '1') ) then   -- LW load-delay slot
+        br_stall <= '1';
         eq_fwd_B <= regs_B;
-      else    -- non-LW
-        if MM_mfc0 /= '1' then
-          eq_fwd_B <= MM_result;
-        else
-          eq_fwd_B <= MM_cop0_val;
-        end if;
+      elsif MM_mfc0 = '1' then          -- non-LW
+        eq_fwd_B <= MM_cop0_val;
+      else
+        eq_fwd_B <= MM_result;
       end if;
     else
       eq_fwd_B <= regs_B;
     end if;
+
   end process RF_FORWARDING_BRANCH;
 
+  
   br_equal    <= (eq_fwd_A = eq_fwd_B);
   br_negative <= (eq_fwd_A(31) = '1');
   br_eq_zero  <= (eq_fwd_A = x"00000000");
   
 
   RF_BR_tgt_select: process (br_equal,br_negative,br_eq_zero,
-                        ctrl_word,rimm_word) 
+                             ctrl_word,rimm_word) 
     variable branch_type, regimm_br_type : t_comparison;
     variable i_br_opr : reg2;
   begin
@@ -995,26 +988,26 @@ begin
     i_br_opr := b"01";          -- assume not taken, PC+4 + 4 (delay slot)
     case branch_type is
       when cNOP =>              -- no branch, PC+4
-        i_br_opr := b"00";      -- x"00000000";
+        i_br_opr := b"00";
       when cEQU =>              -- beq
         if br_equal then i_br_opr := b"10";  -- br_target;
         end if;
       when cNEQ =>              -- bne
-        if (not br_equal) then i_br_opr := b"10";  -- br_target;
+        if not(br_equal) then i_br_opr := b"10";  -- br_target;
         end if;
       when cLEZ =>
         if (br_negative or br_eq_zero) then i_br_opr := b"10";  -- br_target;
         end if;
       when cGTZ =>
-        if not(br_negative or br_eq_zero) then i_br_opr := b"10";  -- br_tgt;
+        if not(br_negative or br_eq_zero) then i_br_opr := b"10";  -- br_target;
         end if;
       when cOTH =>              -- bltz,blez,bgtz,bgez
         case regimm_br_type is
           when cLTZ =>
-            if (br_negative) then i_br_opr := b"10";  -- br_target;
+            if br_negative then i_br_opr := b"10";  -- br_target;
             end if;
           when cGEZ =>
-            if (not br_negative) then i_br_opr := b"10";  -- br_target;
+            if not(br_negative) then i_br_opr := b"10";  -- br_target;
             end if;
           when others => 
             i_br_opr := b"00";    -- x"00000000";
@@ -1033,7 +1026,7 @@ begin
 
   -- branch target computation is in the citical path; add early, select late
   br_addend <= displ32(29 downto 0) & b"00";
-  U_BR_tgt_pl_4:     mf_alt_add_4 port map (RF_PCincd, br_tgt_pl4 );
+  U_BR_tgt_pl_4:     mf_alt_add_4 port map (RF_PCincd, br_tgt_pl4);
   U_BR_tgt_pl_displ: mf_alt_adder port map (RF_PCincd, br_addend, br_tgt_displ);
     
   with br_opr select
@@ -1394,13 +1387,49 @@ begin
   rd_data_raw <= data_inp when (MM_wrmem = '1' and MM_aVal = '0') else
                  (others => 'X');
   
-  d_addr <= d_addr_pre;  -- without TLB
+  d_addr <= d_addr_pre;
 
-
-  MM_MEM_INTERFACE: process(MM_mem_t,MM_aVal,MM_wrmem, MM_addr, rd_data_raw)
+  MM_MEM_CTRL_INTERFACE: process(MM_mem_t, MM_aVal, MM_addr)
     variable i_d_addr : reg32;
-    variable bytes_read : reg32;
     variable i_byte_sel : reg4;
+  begin
+
+    case MM_mem_t(1 downto 0) is                      -- xx,by,hf,wd
+      when b"11" =>
+        i_byte_sel := b"1111";                        -- LW, SW, LWL, LWR
+        i_d_addr   := MM_addr(31 downto 2) & b"00";   -- align reference
+        
+      when b"10" =>
+        i_d_addr     := MM_addr(31 downto 1) & '0';   -- align reference
+        if MM_addr(1) = '0' then                      -- LH*, SH
+          i_byte_sel := b"0011";
+        else
+          i_byte_sel := b"1100";
+        end if;
+
+      when b"01" =>                                   -- LB*, SB
+        i_d_addr := MM_addr;
+        case MM_addr(1 downto 0) is
+          when b"00"  => i_byte_sel := b"0001";
+          when b"01"  => i_byte_sel := b"0010";
+          when b"10"  => i_byte_sel := b"0100";
+          when others => i_byte_sel := b"1000";
+        end case;
+        
+      when others =>
+        i_d_addr   := (others => 'X');  -- MM_addr;
+        i_byte_sel := b"0000";
+
+    end case;
+
+    d_addr_pre <= i_d_addr;
+    b_sel      <= i_byte_sel;
+
+  end process MM_MEM_CTRL_INTERFACE; ---------------------------------
+
+
+  MM_MEM_DATA_INTERFACE: process(MM_mem_t, MM_addr, rd_data_raw)
+    variable bytes_read : reg32;
     variable i_byte : reg8;
     variable i_half : reg16;
     constant c_24_ones  : reg24 := b"111111111111111111111111";
@@ -1411,17 +1440,12 @@ begin
 
     case MM_mem_t(1 downto 0) is  -- 10:xx,by,hf,wd
       when b"11" =>
-        i_byte_sel := b"1111";              -- LW, SW, LWL, LWR
         bytes_read := rd_data_raw;
-        i_d_addr   := MM_addr(31 downto 2) & b"00";   -- align reference
         
       when b"10" =>
-        i_d_addr     := MM_addr(31 downto 1) & '0' ;    -- align reference
         if MM_addr(1) = '0' then                      -- LH*, SH
-          i_byte_sel := b"0011";
           i_half     := rd_data_raw(15 downto 0);
         else
-          i_byte_sel := b"1100";
           i_half     := rd_data_raw(31 downto 16);
         end if;
         if MM_mem_t(2) = '1' and i_half(15) = '1' then  -- mem_t(2):signed=1
@@ -1431,16 +1455,11 @@ begin
         end if;
 
       when b"01" =>                                     -- LB*, SB
-        i_d_addr := MM_addr;
         case MM_addr(1 downto 0) is
-          when b"00"  => i_byte_sel := b"0001";
-                         i_byte     := rd_data_raw(7  downto  0);
-          when b"01"  => i_byte_sel := b"0010";
-                         i_byte     := rd_data_raw(15 downto  8);
-          when b"10"  => i_byte_sel := b"0100";
-                         i_byte     := rd_data_raw(23 downto 16);
-          when others => i_byte_sel := b"1000";
-                         i_byte     := rd_data_raw(31 downto 24);
+          when b"00"  => i_byte := rd_data_raw(7  downto  0);
+          when b"01"  => i_byte := rd_data_raw(15 downto  8);
+          when b"10"  => i_byte := rd_data_raw(23 downto 16);
+          when others => i_byte := rd_data_raw(31 downto 24);
         end case;
         if MM_mem_t(2) = '1' and i_byte(7) = '1' then -- mem_t(2):signed=1
           bytes_read := c_24_ones  & i_byte;
@@ -1449,19 +1468,15 @@ begin
         end if;
         
       when others =>
-        i_d_addr   := "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";  -- MM_addr;
-        i_byte_sel := b"0000";
         bytes_read := (others => 'X');
 
     end case;
 
-    d_addr_pre <= i_d_addr;
-
-    b_sel    <= i_byte_sel;
     rd_data  <= bytes_read;
 
-  end process MM_MEM_INTERFACE; ---------------------------------
+  end process MM_MEM_DATA_INTERFACE; ---------------------------------
 
+  
   -- forwarding for LW -> SW 
   MM_FORWARDING_MEM: process (MM_aVal,MM_wrmem,MM_a_rt,WB_a_c,WB_wreg,WB_C,MM_B)
     variable f_m: reg2;
@@ -1571,7 +1586,7 @@ begin
     WB_LO        when b"101",           -- MFLO
     WB_cop0_val  when b"110",           -- from COP0 registers
     (x"0000000" & b"000" & WB_LLbit) when b"111",  -- from LLbit
-    x"00000000"  when others;           -- invalid selection
+    (others => 'X') when others;           -- invalid selection
 
   --++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
   -- end of data pipeline 
@@ -2684,7 +2699,7 @@ begin
                  PC(VA_HI_BIT downto VA_LO_BIT);
 
 
-  -- TLB entry 0 -- initialized to 1st page of ROM
+  -- TLB entry 0 -- initialized to 1st,2nd pages of ROM
   --   this mapping must be pinned down at all times (Wired >= 2, see next entry)
   
   MMU_TAG0: register32 generic map(MMU_ini_tag_ROM0)
@@ -2730,14 +2745,14 @@ begin
 
 
   
-  -- TLB entry 2 -- initialized to 3rd page of ROM
+  -- TLB entry 2 -- initialized to 3rd,4th pages of ROM
   
-  MMU_TAG2: register32 generic map(MMU_ini_tag_ROM4)
+  MMU_TAG2: register32 generic map(MMU_ini_tag_ROM2)
     port map (clk, rst, tlb_tag2_updt, tlb_tag_inp, tlb_tag2);
 
-  MMU_DAT2_0: registerN generic map(DAT_REG_BITS, MMU_ini_dat_ROM4)  -- d=1,v=1,g=1
+  MMU_DAT2_0: registerN generic map(DAT_REG_BITS, MMU_ini_dat_ROM2)  -- d=1,v=1,g=1
     port map (clk, rst, tlb_dat2_updt, tlb_dat0_inp, tlb_dat2_0);
-  MMU_DAT2_1: registerN generic map(DAT_REG_BITS, MMU_ini_dat_ROM5)  -- d=1,v=1,g=1
+  MMU_DAT2_1: registerN generic map(DAT_REG_BITS, MMU_ini_dat_ROM3)  -- d=1,v=1,g=1
     port map (clk, rst, tlb_dat2_updt, tlb_dat1_inp, tlb_dat2_1);
 
   hit2_pc <= TRUE when (tlb_tag2(VA_HI_BIT downto VA_LO_BIT) = PC(VA_HI_BIT downto VA_LO_BIT)
@@ -2752,14 +2767,14 @@ begin
 
 
 
-  -- TLB entry 3 -- initialized to 4th page of ROM
+  -- TLB entry 3 -- initialized to 5th,6th pages of ROM
   
-  MMU_TAG3: register32 generic map(MMU_ini_tag_ROM6)
+  MMU_TAG3: register32 generic map(MMU_ini_tag_ROM4)
     port map (clk, rst, tlb_tag3_updt, tlb_tag_inp, tlb_tag3);
 
-  MMU_DAT3_0: registerN generic map(DAT_REG_BITS, MMU_ini_dat_ROM6)  -- d=1,v=1,g=1
+  MMU_DAT3_0: registerN generic map(DAT_REG_BITS, MMU_ini_dat_ROM5)  -- d=1,v=1,g=1
     port map (clk, rst, tlb_dat3_updt, tlb_dat0_inp, tlb_dat3_0);
-  MMU_DAT3_1: registerN generic map(DAT_REG_BITS, MMU_ini_dat_ROM7)  -- d=1,v=1,g=1
+  MMU_DAT3_1: registerN generic map(DAT_REG_BITS, MMU_ini_dat_ROM6)  -- d=1,v=1,g=1
     port map (clk, rst, tlb_dat3_updt, tlb_dat1_inp, tlb_dat3_1);
 
   hit3_pc <= TRUE when (tlb_tag3(VA_HI_BIT downto VA_LO_BIT) = PC(VA_HI_BIT downto VA_LO_BIT)
@@ -2774,7 +2789,7 @@ begin
 
 
   
-  -- TLB entry 4 -- initialized to 1st page of RAM
+  -- TLB entry 4 -- initialized to 1st,2nd pages of RAM
 
   MMU_TAG4: register32 generic map(MMU_ini_tag_RAM0)
     port map (clk, rst, tlb_tag4_updt, tlb_tag_inp, tlb_tag4);
@@ -2796,7 +2811,7 @@ begin
 
 
   
-  -- TLB entry 5 -- initialized to 2nd page of RAM
+  -- TLB entry 5 -- initialized to 3rd,4th pages of RAM
   
   MMU_TAG5: register32 generic map(MMU_ini_tag_RAM2)
     port map (clk, rst, tlb_tag5_updt, tlb_tag_inp, tlb_tag5);
@@ -2818,14 +2833,14 @@ begin
 
 
 
-  -- TLB entry 6 -- initialized to top of RAM =  stack
+  -- TLB entry 6 -- initialized to 5th,6th pages of RAM
   
-  MMU_TAG6: register32 generic map(MMU_ini_tag_RAM6)
+  MMU_TAG6: register32 generic map(MMU_ini_tag_RAM4)
     port map (clk, rst, tlb_tag6_updt, tlb_tag_inp, tlb_tag6);
 
-  MMU_DAT6_0: registerN generic map(DAT_REG_BITS, MMU_ini_dat_RAM6)  -- d=1,v=1,g=1
+  MMU_DAT6_0: registerN generic map(DAT_REG_BITS, MMU_ini_dat_RAM4)  -- d=1,v=1,g=1
     port map (clk, rst, tlb_dat6_updt, tlb_dat0_inp, tlb_dat6_0);
-  MMU_DAT6_1: registerN generic map(DAT_REG_BITS, MMU_ini_dat_RAM7)  -- d=1,v=1,g=1
+  MMU_DAT6_1: registerN generic map(DAT_REG_BITS, MMU_ini_dat_RAM5)  -- d=1,v=1,g=1
     port map (clk, rst, tlb_dat6_updt, tlb_dat1_inp, tlb_dat6_1);
 
   hit6_pc <= TRUE when (tlb_tag6(VA_HI_BIT downto VA_LO_BIT) = PC(VA_HI_BIT downto VA_LO_BIT)
@@ -2839,14 +2854,14 @@ begin
              else FALSE;
 
 
-  -- TLB entry 7 -- initialized to 3rd page of ROM  
+  -- TLB entry 7 -- initialized to 7th,8th pages of RAM = stack
   
-  MMU_TAG7: register32 generic map(MMU_ini_tag_ROM2)
+  MMU_TAG7: register32 generic map(MMU_ini_tag_RAM6)
     port map (clk, rst, tlb_tag7_updt, tlb_tag_inp, tlb_tag7);
 
-  MMU_DAT7_0: registerN generic map(DAT_REG_BITS, MMU_ini_dat_ROM2)  -- d=1,v=1,g=1
+  MMU_DAT7_0: registerN generic map(DAT_REG_BITS, MMU_ini_dat_RAM6)  -- d=1,v=1,g=1
     port map (clk, rst, tlb_dat7_updt, tlb_dat0_inp, tlb_dat7_0);
-  MMU_DAT7_1: registerN generic map(DAT_REG_BITS, MMU_ini_dat_ROM3)  -- d=1,v=1,g=1
+  MMU_DAT7_1: registerN generic map(DAT_REG_BITS, MMU_ini_dat_RAM7)  -- d=1,v=1,g=1
     port map (clk, rst, tlb_dat7_updt, tlb_dat1_inp, tlb_dat7_1);
 
   hit7_pc <= TRUE when (tlb_tag7(VA_HI_BIT downto VA_LO_BIT) = PC(VA_HI_BIT downto VA_LO_BIT)

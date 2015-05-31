@@ -64,9 +64,9 @@ _excp:  mfc0 $k1, cop0_Context
         mtc0 $k0, cop0_EntryLo0    # EntryLo0 <- k0 = even element
         mtc0 $k1, cop0_EntryLo1    # EntryLo1 <- k1 = odd element
 	##
-	## cause another miss on 2nd ROM mapping
+	## cause, on purpose, another miss on 2nd ROM mapping
 	##
-	li   $k0, 7		   
+	li   $k0, 2
 	mtc0 $k0, cop0_Index
 	ehb
         tlbwi                      # update TLB
@@ -128,7 +128,7 @@ main:	la   $20, x_IO_BASE_ADDR
 
 	
 	# 2nd entry: PPN2 & PPN3 ROM
-	li $5, 7              # 2nd ROM mapping
+	li $5, 2              # 2nd ROM mapping
 	mtc0 $5, cop0_Index
 	nop
 	tlbr
@@ -145,8 +145,8 @@ main:	la   $20, x_IO_BASE_ADDR
 	sw  $0, 0x1c($4)
 
 
-	# 1024th entry: PPN4 & PPN5 RAM
-	li   $5, 6           # 3rd RAM mapping
+	# 1024th entry: PPN6 & PPN7 RAM
+	li   $5, 7           # 3rd RAM mapping
 	mtc0 $5, cop0_Index
 	nop
 	tlbr
@@ -168,6 +168,8 @@ main:	la   $20, x_IO_BASE_ADDR
 	
 	
 	## change mapping for 3rd RAM TLB entry, thus causing a miss
+	li   $5, 7           # 3rd RAM mapping
+	mtc0 $5, cop0_Index
 
 	li   $9, 0x8000
 	sll  $9, $9, 8
@@ -178,8 +180,14 @@ main:	la   $20, x_IO_BASE_ADDR
 
 	tlbwi		    # and write it back to TLB (Index = 6)
 
+	nop
+	nop
+	nop
+	
 	##
 	## cause miss on the load in the delay slot - miss on 6th RAM page
+	##   then a second miss since handler (purposefully) updates the
+	##   TLB entry for the 2nd ROM page
 	##
 	li  $15, (x_DATA_BASE_ADDR + 6*4096) # VPN2
 		

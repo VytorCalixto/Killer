@@ -105,7 +105,7 @@ _excp_180: tlbp         # probe for the guilty entry
         li   $30, '\n'
         sw   $30, x_IO_ADDR_RANGE($20)
 
-        eret			# return to EPC saved on the first fault
+        eret			# return to the EPC saved on the first fault
         .end _excp_180		#   the second fault refills TLB
 
 	
@@ -118,7 +118,7 @@ _excp_180: tlbp         # probe for the guilty entry
 	
 	## dirty trick: there is not enough memory for a full PT, thus
 	##   we set the PT at the bottom of RAM addresses and have
-	##   Context pointing into that address range
+	##   Context pointing to that address range
 
 	.set PTbase, x_DATA_BASE_ADDR
 	.ent main
@@ -148,7 +148,7 @@ main:	la   $20, x_IO_BASE_ADDR
 	sw  $7, 8($4)
 	sw  $0, 0xc($4)
 
-	li $5, 7              # 2nd ROM mapping
+	li $5, 2              # 2nd ROM mapping
 	mtc0 $5, cop0_Index
 	nop
 	tlbr
@@ -199,8 +199,9 @@ main:	la   $20, x_IO_BASE_ADDR
 	nop
 	nop
 
+	##
 	## cause a TLB miss
-
+	##
 	jal  there
 	nop
 	

@@ -40,13 +40,13 @@ typedef struct serial {
 } Tserial;
 
 typedef struct{
-    char rx_queue[16];
+    char rx_queue[16];     // reception queue and pointers
     int rx_hd;
     int rx_tl;
-    int nrx;               // characters in RX_queue
-    char tx_queue[16];
+    char tx_queue[16];     // transmission queue and pointers
     int tx_hd;
     int tx_tl;
+    int nrx;               // characters in RX_queue
     int ntx;               // spaces left in TX_queue
 } UartControl;
 
@@ -58,7 +58,7 @@ char getc(void);           // retorna caractere na fila, decrementa nrx
 int uart_putc(char);            // insere caractere na fila, decrementa ntx
 int wrtc(char);            // escreve caractere diretamente em txreg
 
-extern UartControl uart_control;
+extern UartControl Ud;
 
 int main(void){
     int i;
@@ -84,11 +84,11 @@ int main(void){
 
 char getc(){
     char c;
-    if(uart_control.nrx > 0){
-        c = uart_control.rx_queue[uart_control.rx_hd];
-        uart_control.rx_hd = (uart_control.rx_hd+1)%16;
+    if(Ud.nrx > 0){
+        c = Ud.rx_queue[Ud.rx_hd];
+        Ud.rx_hd = (Ud.rx_hd+1)%16;
         disableInterr();
-        uart_control.nrx--;
+        Ud.nrx--;
         enableInterr();
     }else{
         c = -1;
@@ -98,11 +98,11 @@ char getc(){
 
 int uart_putc(char c){
     int sent;
-    if(uart_control.ntx > 0){
-        uart_control.tx_queue[uart_control.tx_tl] = c;
-        uart_control.tx_tl = (uart_control.tx_tl+1)%16;
+    if(Ud.ntx > 0){
+        Ud.tx_queue[Ud.tx_tl] = c;
+        Ud.tx_tl = (Ud.tx_tl+1)%16;
         disableInterr();
-        uart_control.ntx--;
+        Ud.ntx--;
         enableInterr();
         sent = 1;
     }else{

@@ -3,7 +3,7 @@
 
 typedef struct control { // control register fields (uses only ls byte)
   int ign   : 24,        // ignore uppermost bits
-    rts     : 1,         // Request to Send
+    rts     : 1,         // Request to Send out (bit 7)
     ign2    : 2,         // bits 6,5 ignored
     intTX   : 1,         // interrupt on TX buffer empty (bit 4)
     intRX   : 1,         // interrupt on RX buffer full (bit 3)
@@ -11,16 +11,19 @@ typedef struct control { // control register fields (uses only ls byte)
 } Tcontrol;
 
 typedef struct status { // status register fields (uses only ls byte)
+#if 0
   int s;
-  // int ign   : 24,      // ignore uppermost bits
-  //  ign7    : 1,        // ignored (bit 7)
-  //  txEmpty : 1,        // TX register is empty (bit 6)
-  //  rxFull  : 1,        // octet available from RX register (bit 5)
-  //  int_TX_empt: 1,     // interrupt pending on TX empty (bit 4)
-  //  int_RX_full: 1,     // interrupt pending on RX full (bit 3)
-  //  ign2    : 1,        // ignored (bit 2)
-  //  framing : 1,        // framing error (bit 1)
-  //  overun  : 1;        // overun error (bit 0)
+#else
+  int ign : 24,       // ignore uppermost 3 bytes
+  cts     : 1,        // Clear To Send inp=1 (bit 7)
+  txEmpty : 1,        // TX register is empty (bit 6)
+  rxFull  : 1,        // octet available from RX register (bit 5)
+  int_TX_empt: 1,     // interrupt pending on TX empty (bit 4)
+  int_RX_full: 1,     // interrupt pending on RX full (bit 3)
+  ign2    : 1,        // ignored (bit 2)
+  framing : 1,        // framing error (bit 1)
+  overun  : 1;        // overun error (bit 0)
+#endif
 } Tstatus;
 
 #define RXfull  0x00000020
@@ -96,9 +99,9 @@ int main(void) { // send a string through the UART serial interface
   do {
 
     i = i+1;
-    // while ( (state = uart->cs.stat.txEmpty) != 1 )
-    while ( ! ( (state = uart->cs.stat.s) & TXempty ) )
-      ;
+    // while ( ! ( (state = uart->cs.stat.s) & TXempty ) )
+    while ( (state = (int)uart->cs.stat.txEmpty) == 0 )
+      if (state == 1) cmips_delay(2); // just do something with state
     uart->d.tx = (int)s[i];
 
   } while (s[i] != '\0');  // '\0' is transmitted in previous line
