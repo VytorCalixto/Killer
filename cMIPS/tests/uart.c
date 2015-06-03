@@ -23,7 +23,6 @@ typedef struct status {    // status register fields (uses only ls byte)
 #define RXfull  0x00000020
 #define TXempty 0x00000040
 
-
 typedef union ctlStat {    // control + status on same address
     Tcontrol  ctl;         // write-only
     Tstatus   stat;        // read-only
@@ -40,27 +39,28 @@ typedef struct serial {
 } Tserial;
 
 typedef struct{
-    char rx_queue[16];     // reception queue and pointers
-    int rx_hd;
-    int rx_tl;
-    char tx_queue[16];     // transmission queue and pointers
-    int tx_hd;
-    int tx_tl;
+    char rx_q[16];         // reception queue
+    int rx_hd;             // reception queue head index
+    int rx_tl;             // reception queue tail index
+    char tx_q[16];         // transmission queue
+    int tx_hd;             // transmission queue head index
+    int tx_tl;             // transmission queue tail index
     int nrx;               // characters in RX_queue
     int ntx;               // spaces left in TX_queue
-} UartControl;
+} UARTDriver;
+
+#define EOF -1
 
 int proberx(void);         // retorna nrx
 int probetx(void);         // retorna ntx
 int iostat(void);          // retorna inteiro com status no byte menos sign
 void ioctl(int);           // escreve byte menos sign no reg de controle
 char getc(void);           // retorna caractere na fila, decrementa nrx
-int uart_putc(char);            // insere caractere na fila, decrementa ntx
-int wrtc(char);            // escreve caractere diretamente em txreg
+int Putc(char);            // insere caractere na fila, decrementa ntx
 
-extern UartControl Ud;
+extern UARTDriver Ud;
 
-int main(void){
+int main(){
     int i;
     volatile int state;    // tell GCC not to optimize away code
     volatile Tserial *uart;
@@ -77,7 +77,7 @@ int main(void){
 
     char c;
     while((c=getc())!='\0')
-        uart_putc(c);
+        Putc(c);
 
     return 0;
 }
@@ -85,21 +85,21 @@ int main(void){
 char getc(){
     char c;
     if(Ud.nrx > 0){
-        c = Ud.rx_queue[Ud.rx_hd];
+        c = Ud.rx_q[Ud.rx_hd];
         Ud.rx_hd = (Ud.rx_hd+1)%16;
         disableInterr();
         Ud.nrx--;
         enableInterr();
     }else{
-        c = -1;
+        c = EOF;
     }
     return c;
 }
 
-int uart_putc(char c){
+int Putc(char c){
     int sent;
     if(Ud.ntx > 0){
-        Ud.tx_queue[Ud.tx_tl] = c;
+        Ud.tx_q[Ud.tx_tl] = c;
         Ud.tx_tl = (Ud.tx_tl+1)%16;
         disableInterr();
         Ud.ntx--;
@@ -109,4 +109,12 @@ int uart_putc(char c){
         sent = 0;
     }
     return sent;
+}
+
+int proberx(){
+    return Ud.nrx;
+}
+
+int probetx(){
+    return Ud.ntx;
 }
