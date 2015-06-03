@@ -28,10 +28,40 @@ RX:
     sw    $a1, 0($a0)           # Save incremented nrx
 
 TX:
-    andi $a0, $k1, UART_tx_irq  # Is this transmission?
-    beq  $a0, $zero, END        #   no, end handler
+    andi  $a0, $k1, UART_tx_irq # Is this transmission?
+    beq   $a0, $zero, END       #   no, end handler
     nop
-    # TODO: Increment ntx (we're sending a char)
+
+    lui   $a0, %hi(ntx)
+    ori   $a0, $a0, %lo(ntx)
+    lw    $a1, 0($a0)           # Read ntx
+
+    li    $a0, 16
+    slt   $a0, $a1, $a0         # If ntx < 16 there's something on the queue
+    beq   $a0, $zero, END       
+    nop
+
+    lui   $a0, %hi(tx_queue)
+    ori   $a0, $a0, %lo(tx_queue)
+    lw    $a1, 0($a0)           # Read TX_queue
+
+    lui   $a0, %hi(HW_uart_addr)
+    ori   $a0, $a0, %lo(HW_uart_addr)
+    sw    $a1, 0($a0)           # Put data on UART
+
+    lui   $a0, %hi(tx_hd)
+    ori   $a0, $a0, %lo(tx_hd)
+    lw    $a1, 0($a0)           # Read tx_hd
+    nop
+    addiu $a1, $a1, 1           # Increment tx_hd: we've transmitted, there's space on the queue
+    sw    $a1, 0($a0)           # Save tx_hd
+
+    lui   $a0, %hi(ntx)
+    ori   $a0, $a0, %lo(ntx)
+    lw    $a1, 0($a0)           # Read ntx
+    nop
+    addiu $a1, $a1, 1           # Increment ntx
+    sw    $a1, 0($a0)           # Save incremented ntx
 
 END:
 
