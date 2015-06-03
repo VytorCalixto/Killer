@@ -51,12 +51,12 @@ typedef struct{
 
 #define EOF -1
 
-int proberx(void);         // retorna nrx
-int probetx(void);         // retorna ntx
-int iostat(void);          // retorna inteiro com status no byte menos sign
-void ioctl(int);           // escreve byte menos sign no reg de controle
-char getc(void);           // retorna caractere na fila, decrementa nrx
-int Putc(char);            // insere caractere na fila, decrementa ntx
+int proberx(void);         // returns nrx
+int probetx(void);         // returns ntx
+int iostat(void);          // returns integer with status at lsb
+void ioctl(int);           // write lsb in control register
+char getc(void);           // returns char in queue, decrements nrx
+int Putc(char);            // inserts char in queue, decrements ntx
 
 extern UARTDriver Ud;
 
