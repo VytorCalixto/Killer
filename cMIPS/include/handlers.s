@@ -106,6 +106,7 @@ UARTinterr:
 	
 	sw    $a0, 12($k0)	    # save registers $a0,$a1, others?
 	sw    $a1, 16($k0)
+	sw    $a2, 18($k0)
 
 	#----------------------------------
 	# while you are developing the complete handler,
@@ -125,6 +126,7 @@ UARTinterr:
 	# sw    $a1, 8($k0)           # Signal new arrival 
 		
 UARTret:
+	lw    $a2, 18($k0)
 	lw    $a1, 16($k0)          # restore registers $a0,$a1, others?
 	lw    $a0, 12($k0)
 
