@@ -76,8 +76,11 @@ int main(){
     uart->cs.ctl = ctrl;
 
     char c;
-    while((c=getc())!='\0')
+    uart->d.tx = 'a';
+    while((c=getc())!='\0'){
+        to_stdout(c);
         Putc(c);
+    }
 
     return 0;
 }
