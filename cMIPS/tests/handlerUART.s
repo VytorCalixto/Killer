@@ -10,6 +10,8 @@ RX:
     
     lw    $a1, 48($a0)          # Read nrx
     
+    la  $2,x_IO_BASE_ADDR 
+    sw  $a1,0($2)               # Print for debug
 
     addiu $k1, $zero, 16
     slt   $k1, $a1, $k1         # If nrx >= 16 the queue is full
@@ -28,13 +30,13 @@ RX:
     
     lui   $a1, %hi(HW_uart_addr)
     ori   $a1, $a1, %lo(HW_uart_addr)
-    lw    $k1, 4($a1)           # Read data
+    lbu    $k1, 4($a1)           # Read data
     nop
-    sw    $k1, 0($a0)           # Put data on RX_queue tail
+    sb    $k1, 0($a0)           # Put data on RX_queue tail
 
-    #FIXME: Breaks after trying to save second character on rx_queue
     la  $2,x_IO_BASE_ADDR 
-    sw  $k1,0($2)               # Print for debug
+    sw  $a0,0($2)               # Print for debug
+
 
 
 TX:
@@ -61,11 +63,11 @@ TX:
 
     addiu $a1, $a1, 24          # tx_hd position on tx_queue
     add   $a0, $a1, $a0         # tx_queue head address
-    lw    $a1, 0($a0)           # Read TX_queue head
+    lbu   $a1, 0($a0)           # Read TX_queue head
 
     lui   $a0, %hi(HW_uart_addr)
     ori   $a0, $a0, %lo(HW_uart_addr)
-    sw    $a1, 0($a0)           # Put data on UART
+    sb    $a1, 4($a0)           # Put data on UART
 
 END:
 
