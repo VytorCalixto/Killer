@@ -61,26 +61,26 @@ int Putc(char);            // inserts char in queue, decrements ntx
 void initUd();
 
 extern UARTDriver Ud;
+volatile Tserial *uart;
 
 int main(){
     int i;
     volatile int state;    // tell GCC not to optimize away code
-    volatile Tserial *uart;
     volatile Tstatus status;
-    volatile char c;
+    volatile char c, last;
+    uart = (void *)IO_UART_ADDR; // bottom of UART address range
     Tcontrol ctrl;
 
-    uart = (void *)IO_UART_ADDR; // bottom of UART address range
 
     ctrl.ign   = 0;
     ctrl.intTX = 0;
     ctrl.intRX = 1;
-    ctrl.speed = 1;        // operate at 1/2 of the highest data rate
+    ctrl.speed = 2;        // operate at 1/2 of the highest data rate
     uart->cs.ctl = ctrl;
 
     initUd();
 
-    uart->d.tx = 'a';
+    //uart->d.tx = 'a';
 
     //print(lol);
     /*while(c!='\n'){
@@ -90,8 +90,13 @@ int main(){
         c=getc();
     }*/
 
-    while(1)
-        c=getc();
+    last = '0';
+    while((c=getc()) != '\0'){
+        if(c != EOF) {
+            while(!Putc(c)); // Wait till there's space on queue
+        }
+    }
+    Putc(c); // Sends '\0'
 
     return 0;
 }
@@ -119,7 +124,7 @@ char getc(){
         //print(2);
         c = EOF;
     }
-    // print((int)c);
+    //print((int)c);
     // to_stdout(c);
     // to_stdout('\n');
     return c;
@@ -127,6 +132,11 @@ char getc(){
 
 int Putc(char c){
     int sent;
+    if(Ud.ntx == 16) {
+        uart->d.tx = c;
+        return 1;
+    }
+
     if(Ud.ntx > 0){
         Ud.tx_q[Ud.tx_tl] = c;
         Ud.tx_tl = (Ud.tx_tl+1)%16;

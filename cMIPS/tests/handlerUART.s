@@ -9,9 +9,6 @@ RX:
     ori   $a0, $a0, %lo(Ud)     # $a0 <- Ud
     
     lw    $a1, 48($a0)          # Read nrx
-    
-    la  $2,x_IO_BASE_ADDR 
-    sw  $a1,0($2)               # Print for debug
 
     addiu $k1, $zero, 16
     slt   $k1, $a1, $k1         # If nrx >= 16 the queue is full
@@ -30,12 +27,13 @@ RX:
     
     lui   $a1, %hi(HW_uart_addr)
     ori   $a1, $a1, %lo(HW_uart_addr)
-    lbu    $k1, 4($a1)           # Read data
+    lbu   $k1, 4($a1)           # Read data
     nop
     sb    $k1, 0($a0)           # Put data on RX_queue tail
 
-    la  $2,x_IO_BASE_ADDR 
-    sw  $a0,0($2)               # Print for debug
+    # lui $a0, %hi(x_IO_BASE_ADDR)
+    # ori $a0, $a0, %lo(x_IO_BASE_ADDR)
+    # sw  $k1, 0($a0)               # Print for debug
 
 
 
