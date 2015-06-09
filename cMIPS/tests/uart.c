@@ -57,6 +57,7 @@ int iostat(void);          // returns integer with status at lsb
 void ioctl(int);           // write lsb in control register
 char getc(void);           // returns char in queue, decrements nrx
 int Putc(char);            // inserts char in queue, decrements ntx
+int ctoi(char);            // converts a character to an integer
 
 void initUd();
 
@@ -67,7 +68,7 @@ int main(){
     int i;
     volatile int state;    // tell GCC not to optimize away code
     volatile Tstatus status;
-    volatile char c, last;
+    volatile char c;
     uart = (void *)IO_UART_ADDR; // bottom of UART address range
     Tcontrol ctrl;
 
@@ -80,23 +81,23 @@ int main(){
 
     initUd();
 
-    //uart->d.tx = 'a';
-
-    //print(lol);
-    /*while(c!='\n'){
-        /*to_stdout('X');
-        to_stdout('\n');
-        //print(lol);
-        c=getc();
-    }*/
-
-    last = '0';
-    while((c=getc()) != '\0'){
+    c = getc();
+    while(c != '\0') {
         if(c != EOF) {
-            while(!Putc(c)); // Wait till there's space on queue
+            int n = 0;
+            while(c != '\n' && c != '\0') {
+                int h = ctoi(c);
+                if(h != EOF) {
+                    n = n*16 + h;         
+                }
+                c = getc();
+            }
+            print(n);
+            //while(!Putc(c)); // Wait till there's space on queue
         }
+        c = getc();
     }
-    Putc(c); // Sends '\0'
+    Putc(c); // Sends EOF
 
     return 0;
 }
@@ -124,9 +125,6 @@ char getc(){
         //print(2);
         c = EOF;
     }
-    //print((int)c);
-    // to_stdout(c);
-    // to_stdout('\n');
     return c;
 }
 
@@ -156,4 +154,23 @@ int proberx(){
 
 int probetx(){
     return Ud.ntx;
+}
+
+int ctoi(char c) {
+    // If it's a number
+    if(c >=0x30 && c < 0x3a) {
+        return ((int) c) - 0x30;
+    }
+
+    // If it's an uppercase letter
+    if(c >= 0x41 && c < 0x47) {
+        return ((int) c) - 0x37; // 0x40 - 0xa
+    }
+
+    // If it's a lowercase letter
+    if(c >= 0x61 && c < 0x67) {
+        return ((int) c) - 0x57; //0x60 - 0xa
+    }
+
+    return EOF;
 }
