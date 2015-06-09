@@ -5,61 +5,62 @@ RX:
     andi  $a0, $k1, UART_rx_irq # Is this reception?
     beq   $a0, $zero, TX        #   no, test if it's transmission
 
-    lui   $a0, %hi(nrx)    
-    ori   $a0, $a0, %lo(nrx)
-    lw    $a1, 0($a0)           # Read nrx
+    lui   $a0, %hi(Ud)    
+    ori   $a0, $a0, %lo(Ud)     # $a0 <- Ud
     
-    addiu $a2, $zero, 16
-    slt   $a2, $a1, $a2         # If nrx >= 16 the queue is full
-    beq   $a2, $zero, END 
+    lw    $a1, 48($a0)          # Read nrx
+    
+
+    addiu $k1, $zero, 16
+    slt   $k1, $a1, $k1         # If nrx >= 16 the queue is full
+    beq   $k1, $zero, END 
     
     addiu $a1, $a1, 1           # Increment nrx right now so we dont need to read it again
-    sw    $a1, 0($a0)           # Save incremented nrx
+    sw    $a1, 48($a0)          # Save incremented nrx
 
-    lui   $a0, %hi(rx_tl)    
-    ori   $a0, $a0, %lo(rx_tl)
-    lw    $a1, 0($a0)           # Read rx_tl
+    lw    $a1, 20($a0)          # Read rx_tl
     nop
-    addiu $a2, $a1, 1           # Increment RX_tail
-    andi  $a2, $a2, 15          # It's a circular queue so: (rx_tl+1)%16 
-    sw    $a2, 0($a0)           # Save new rx_tl
+    addiu $k1, $a1, 1           # Increment RX_tail
+    andi  $k1, $k1, 15          # It's a circular queue so: (rx_tl+1)%16 
+    sw    $k1, 20($a0)          # Save new rx_tl
 
-    lui   $a0, %hi(HW_uart_addr)
-    ori   $a0, $a0, %lo(HW_uart_addr)
-    lw    $a2, 4($a0)           # Read data
-
-    lui   $a0, %hi(rx_queue)    
-    ori   $a0, $a0, %lo(rx_queue)
     add   $a0, $a1, $a0         # Get queue tail address (before the increment)
-    sw    $a2, 0($a0)           # Put data on RX_queue tail
+    
+    lui   $a1, %hi(HW_uart_addr)
+    ori   $a1, $a1, %lo(HW_uart_addr)
+    lw    $k1, 4($a1)           # Read data
+    nop
+    sw    $k1, 0($a0)           # Put data on RX_queue tail
+
+    #FIXME: Breaks after trying to save second character on rx_queue
+    la  $2,x_IO_BASE_ADDR 
+    sw  $k1,0($2)               # Print for debug
 
 
 TX:
     andi  $a0, $k1, UART_tx_irq # Is this transmission?
     beq   $a0, $zero, END       #   no, end handler
 
-    lui   $a0, %hi(ntx)
-    ori   $a0, $a0, %lo(ntx)
-    lw    $a1, 0($a0)           # Read ntx
+    lui   $a0, %hi(Ud)
+    ori   $a0, $a0, %lo(Ud)     # $a0 <- Ud
 
-    addiu $a2, $zero, 16
-    slt   $a2, $a1, $a2         # If ntx < 16 there's something on the queue
-    beq   $a2, $zero, END      
+    lw    $a1, 52($a0)          # Read ntx
+
+    addiu $k1, $zero, 16
+    slt   $k1, $a1, $k1         # If ntx < 16 there's something on the queue
+    beq   $k1, $zero, END      
 
     addiu $a1, $a1, 1           # Increment ntx
-    sw    $a1, 0($a0)           # Save incremented ntx
+    sw    $a1, 52($a0)          # Save incremented ntx
 
-    lui   $a0, %hi(tx_hd)
-    ori   $a0, $a0, %lo(tx_hd)
-    lw    $a1, 0($a0)           # Read tx_hd
+    lw    $a1, 40($a0)          # Read tx_hd
     nop
-    addiu $a2, $a1, 1           # Increment tx_hd: we've transmitted, there's space on the queue
-    andi  $a2, $a2, 15          # It's a circular queue so: (tx_hd+1)%16
-    sw    $a2, 0($a0)           # Save tx_hd
+    addiu $k1, $a1, 1           # Increment tx_hd: we've transmitted, there's space on the queue
+    andi  $k1, $k1, 15          # It's a circular queue so: (tx_hd+1)%16
+    sw    $k1, 40($a0)          # Save tx_hd
 
-    lui   $a0, %hi(tx_queue)
-    ori   $a0, $a0, %lo(tx_queue)
-    add   $a0, $a1, $a0         # Get queue head address (before the increment)
+    addiu $a1, $a1, 24          # tx_hd position on tx_queue
+    add   $a0, $a1, $a0         # tx_queue head address
     lw    $a1, 0($a0)           # Read TX_queue head
 
     lui   $a0, %hi(HW_uart_addr)

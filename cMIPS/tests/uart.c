@@ -38,7 +38,7 @@ typedef struct serial {
     Tdata    d;            // TX & RX registers at address UART + 4
 } Tserial;
 
-typedef struct{
+typedef struct UARTDriver{
     char rx_q[16];         // reception queue
     int rx_hd;             // reception queue head index
     int rx_tl;             // reception queue tail index
@@ -58,6 +58,8 @@ void ioctl(int);           // write lsb in control register
 char getc(void);           // returns char in queue, decrements nrx
 int Putc(char);            // inserts char in queue, decrements ntx
 
+void initUd();
+
 extern UARTDriver Ud;
 
 int main(){
@@ -65,6 +67,7 @@ int main(){
     volatile int state;    // tell GCC not to optimize away code
     volatile Tserial *uart;
     volatile Tstatus status;
+    volatile char c;
     Tcontrol ctrl;
 
     uart = (void *)IO_UART_ADDR; // bottom of UART address range
@@ -75,27 +78,50 @@ int main(){
     ctrl.speed = 1;        // operate at 1/2 of the highest data rate
     uart->cs.ctl = ctrl;
 
-    char c;
+    initUd();
+
     uart->d.tx = 'a';
-    while((c=getc())!='\0'){
-        to_stdout(c);
-        Putc(c);
-    }
+
+    //print(lol);
+    /*while(c!='\n'){
+        /*to_stdout('X');
+        to_stdout('\n');
+        //print(lol);
+        c=getc();
+    }*/
+
+    while(1)
+        c=getc();
 
     return 0;
+}
+
+void initUd(){
+    Ud.rx_hd = 0;
+    Ud.rx_tl = 0;
+    Ud.tx_hd = 0;
+    Ud.tx_tl = 0;
+    Ud.nrx = 0;
+    Ud.ntx = 16;
 }
 
 char getc(){
     char c;
     if(Ud.nrx > 0){
+        // print(1);
+        // print(Ud.nrx);
         c = Ud.rx_q[Ud.rx_hd];
         Ud.rx_hd = (Ud.rx_hd+1)%16;
         disableInterr();
         Ud.nrx--;
         enableInterr();
     }else{
+        //print(2);
         c = EOF;
     }
+    // print((int)c);
+    // to_stdout(c);
+    // to_stdout('\n');
     return c;
 }
 
