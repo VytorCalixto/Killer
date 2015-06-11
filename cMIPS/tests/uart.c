@@ -92,6 +92,8 @@ int main(){
                 }
                 c = getc();
             }
+            //If it's a negative hex make it a negative integer as well
+            n = 0x8000&n ? (int)(0x7FFF&n)-0x8000 : n;
             print(n);
             //while(!Putc(c)); // Wait till there's space on queue
         }
@@ -114,15 +116,12 @@ void initUd(){
 char getc(){
     char c;
     if(Ud.nrx > 0){
-        // print(1);
-        // print(Ud.nrx);
+        disableInterr();
         c = Ud.rx_q[Ud.rx_hd];
         Ud.rx_hd = (Ud.rx_hd+1)%16;
-        disableInterr();
         Ud.nrx--;
         enableInterr();
     }else{
-        //print(2);
         c = EOF;
     }
     return c;
@@ -136,9 +135,9 @@ int Putc(char c){
     }
 
     if(Ud.ntx > 0){
+        disableInterr();
         Ud.tx_q[Ud.tx_tl] = c;
         Ud.tx_tl = (Ud.tx_tl+1)%16;
-        disableInterr();
         Ud.ntx--;
         enableInterr();
         sent = 1;
