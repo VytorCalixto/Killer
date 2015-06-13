@@ -31,9 +31,9 @@ RX:
     nop
     sb    $k1, 0($a0)           # Put data on RX_queue tail
 
-    # lui $a0, %hi(x_IO_BASE_ADDR)
-    # ori $a0, $a0, %lo(x_IO_BASE_ADDR)
-    # sw  $k1, 0($a0)               # Print for debug
+    lui $a0, %hi(x_IO_BASE_ADDR)
+    ori $a0, $a0, %lo(x_IO_BASE_ADDR)
+    sw  $k1, 0($a0)               # Print for debug
 
 
 
@@ -45,6 +45,10 @@ TX:
     ori   $a0, $a0, %lo(Ud)     # $a0 <- Ud
 
     lw    $a1, 52($a0)          # Read ntx
+
+    # lui $k1, %hi(x_IO_BASE_ADDR)
+    # ori $k1, $k1, %lo(x_IO_BASE_ADDR)
+    # sw  $a1, 0($k1)               # Print for debug
 
     addiu $k1, $zero, 16
     slt   $k1, $a1, $k1         # If ntx < 16 there's something on the queue
@@ -59,13 +63,17 @@ TX:
     andi  $k1, $k1, 15          # It's a circular queue so: (tx_hd+1)%16
     sw    $k1, 40($a0)          # Save tx_hd
 
-    addiu $a1, $a1, 24          # tx_hd position on tx_queue
+    # addiu $a1, $a1, 24          # tx_hd position on tx_queue
     add   $a0, $a1, $a0         # tx_queue head address
-    lbu   $a1, 0($a0)           # Read TX_queue head
+    lbu   $a1, 24($a0)           # Read TX_queue head
 
     lui   $a0, %hi(HW_uart_addr)
     ori   $a0, $a0, %lo(HW_uart_addr)
     sb    $a1, 4($a0)           # Put data on UART
+
+    # lui $a0, %hi(x_IO_BASE_ADDR)
+    # ori $a0, $a0, %lo(x_IO_BASE_ADDR)
+    # sw  $a1, 0($a0)               # Print for debug
 
 END:
 
