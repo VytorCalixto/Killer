@@ -56,7 +56,7 @@ int probetx(void);         // returns ntx
 int iostat(void);          // returns integer with status at lsb
 void ioctl(int);           // write lsb in control register
 char getc(void);           // returns char in queue, decrements nrx
-int Putc(char);            // inserts char in queue, decrements ntx
+void Putc(char);            // inserts char in queue, decrements ntx
 int ctoi(char);            // converts a character to an integer
 
 void initUd();
@@ -76,35 +76,27 @@ int main(){
     ctrl.ign   = 0;
     ctrl.intTX = 1;
     ctrl.intRX = 1;
-    ctrl.speed = 1;        // operate at 1/2 of the highest data rate
+    ctrl.speed = 2;        // operate at 1/2 of the highest data rate
     uart->cs.ctl = ctrl;
 
     initUd();
-    int lol;
     char last = EOF;
-    char first = EOF;
+    // FIXME: Não tah saindo do while (por causa do ctrl.intTX =1)
     while(!((c = getc()) == '\n' && c == last)) {
-        last = c;
-        print(c);
         if(c != EOF) {
-            if(!Putc(c)){
-                print(0);
-                while(!(TXempty&uart->cs.stat.s));
-                disableInterr();
-                first = Ud.tx_q[Ud.tx_hd];
-                Ud.tx_hd = (Ud.tx_hd+1)%16;
-                Ud.ntx++;
-                enableInterr();
-                uart->d.tx = first;
-                Putc(c);
-            }
+            print(c);
+            last = c;
+            Putc(c);
         }
     }
-    // for(i=0;i<Ud.ntx;i++){
-    //     print(Ud.tx_q[i]);
-    // }
-    // to_stdout('\n');
-    //uart->d.tx = '\n'; //Send STX (Start of Text)
+    if(Ud.ntx < 16){
+        disableInterr();
+        uart->d.tx = Ud.tx_q[Ud.tx_hd];
+        Ud.tx_hd = (Ud.tx_hd+1)%16;
+        Ud.ntx++;
+        enableInterr();
+    }
+    while(1);
     
     // while((c = getc()) != '\0') {
     //     if(c != EOF) {
@@ -148,16 +140,22 @@ char getc(){
     return c;
 }
 
-int Putc(char c){
+void Putc(char c){
     if(Ud.ntx > 0){
         disableInterr();
         Ud.tx_q[Ud.tx_tl] = c;
         Ud.tx_tl = (Ud.tx_tl+1)%16;
         Ud.ntx--;
         enableInterr();
-        return 1;
+    }else{
+        while(!(TXempty&uart->cs.stat.s));
+        disableInterr();
+        uart->d.tx = Ud.tx_q[Ud.tx_hd];
+        Ud.tx_hd = (Ud.tx_hd+1)%16;
+        Ud.ntx++;
+        enableInterr();
+        Putc(c);
     }
-    return 0;
 }
 
 int proberx(){

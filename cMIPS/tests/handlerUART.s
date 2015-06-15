@@ -31,9 +31,14 @@ RX:
     nop
     sb    $k1, 0($a0)           # Put data on RX_queue tail
 
-    lui $a0, %hi(x_IO_BASE_ADDR)
-    ori $a0, $a0, %lo(x_IO_BASE_ADDR)
-    sw  $k1, 0($a0)               # Print for debug
+    # lui $a0, %hi(x_IO_BASE_ADDR)
+    # ori $a0, $a0, %lo(x_IO_BASE_ADDR)
+    # sw  $k1, 0($a0)               # Print for debug
+
+    lw    $k1, 0($a1)
+    j     RX
+    nop
+
 
 
 
@@ -74,6 +79,10 @@ TX:
     # lui $a0, %hi(x_IO_BASE_ADDR)
     # ori $a0, $a0, %lo(x_IO_BASE_ADDR)
     # sw  $a1, 0($a0)               # Print for debug
+
+    lw    $k1, 0($a0)
+    j     RX
+    nop
 
 END:
 
