@@ -65,13 +65,8 @@ extern UARTDriver Ud;
 volatile Tserial *uart;
 
 int main(){
-    int i;
-    volatile int state;    // tell GCC not to optimize away code
-    volatile Tstatus status;
-    volatile char c;
     uart = (void *)IO_UART_ADDR; // bottom of UART address range
     Tcontrol ctrl;
-
 
     ctrl.ign   = 0;
     ctrl.intTX = 1;
@@ -80,12 +75,10 @@ int main(){
     uart->cs.ctl = ctrl;
 
     initUd();
-    char last = EOF;
-    // FIXME: Não tah saindo do while (por causa do ctrl.intTX =1)
-    while(!((c = getc()) == '\n' && c == last)) {
+    volatile char c;
+    
+    while((c = getc()) != '\0') {
         if(c != EOF) {
-            print(c);
-            last = c;
             Putc(c);
         }
     }
@@ -96,7 +89,9 @@ int main(){
         Ud.ntx++;
         enableInterr();
     }
-    while(1);
+
+    int cont;
+    for(cont=0;cont<1000;cont++);  //Wait for the remote uart
     
     // while((c = getc()) != '\0') {
     //     if(c != EOF) {
