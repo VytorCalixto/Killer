@@ -56,7 +56,7 @@ int probetx(void);         // returns ntx
 int iostat(void);          // returns integer with status at lsb
 void ioctl(int);           // write lsb in control register
 char getc(void);           // returns char in queue, decrements nrx
-int Putc(char);            // inserts char in queue, decrements ntx
+void Putc(char);            // inserts char in queue, decrements ntx
 int ctoi(char);            // converts a character to an integer
 
 void initUd();
@@ -65,41 +65,51 @@ extern UARTDriver Ud;
 volatile Tserial *uart;
 
 int main(){
-    int i;
-    volatile int state;    // tell GCC not to optimize away code
-    volatile Tstatus status;
-    volatile char c;
     uart = (void *)IO_UART_ADDR; // bottom of UART address range
     Tcontrol ctrl;
 
-
     ctrl.ign   = 0;
-    ctrl.intTX = 0;
+    ctrl.intTX = 1;
     ctrl.intRX = 1;
     ctrl.speed = 2;        // operate at 1/2 of the highest data rate
     uart->cs.ctl = ctrl;
 
     initUd();
-
-    c = getc();
-    while(c != '\0') {
+    volatile char c;
+    
+    while((c = getc()) != '\0') {
         if(c != EOF) {
-            int n = 0;
-            while(c != '\n' && c != '\0') {
-                int h = ctoi(c);
-                if(h != EOF) {
-                    n = n*16 + h;         
-                }
-                c = getc();
-            }
-            //If it's a negative hex make it a negative integer as well
-            n = 0x8000&n ? (int)(0x7FFF&n)-0x8000 : n;
-            print(n);
-            //while(!Putc(c)); // Wait till there's space on queue
+            Putc(c);
         }
-        c = getc();
     }
-    Putc(c); // Sends EOF
+    if(Ud.ntx < 16){
+        disableInterr();
+        uart->d.tx = Ud.tx_q[Ud.tx_hd];
+        Ud.tx_hd = (Ud.tx_hd+1)%16;
+        Ud.ntx++;
+        enableInterr();
+    }
+
+    int cont;
+    for(cont=0;cont<1000;cont++);  //Wait for the remote uart
+    
+    // while((c = getc()) != '\0') {
+    //     if(c != EOF) {
+    //         // while(!Putc(c)); // Wait till there's space on queue
+    //         int n = 0;
+    //         while(c != '\n' && c != '\0') {
+    //             int h = ctoi(c);
+    //             if(h != EOF) {
+    //                 n = n*16 + h;         
+    //             }
+    //             c = getc();
+    //         }
+    //         //If it's a negative hex make it a negative integer as well
+    //         n = 0x8000&n ? (int)(0x7FFF&n)-0x8000 : n;
+    //         // print(n);
+    //     }
+    // }
+    // Putc(c); // Sends EOF
 
     return 0;
 }
@@ -114,37 +124,33 @@ void initUd(){
 }
 
 char getc(){
-    char c;
+    char c = EOF;
     if(Ud.nrx > 0){
         disableInterr();
         c = Ud.rx_q[Ud.rx_hd];
         Ud.rx_hd = (Ud.rx_hd+1)%16;
         Ud.nrx--;
         enableInterr();
-    }else{
-        c = EOF;
     }
     return c;
 }
 
-int Putc(char c){
-    int sent;
-    if(Ud.ntx == 16) {
-        uart->d.tx = c;
-        return 1;
-    }
-
+void Putc(char c){
     if(Ud.ntx > 0){
         disableInterr();
         Ud.tx_q[Ud.tx_tl] = c;
         Ud.tx_tl = (Ud.tx_tl+1)%16;
         Ud.ntx--;
         enableInterr();
-        sent = 1;
     }else{
-        sent = 0;
+        while(!(TXempty&uart->cs.stat.s));
+        disableInterr();
+        uart->d.tx = Ud.tx_q[Ud.tx_hd];
+        Ud.tx_hd = (Ud.tx_hd+1)%16;
+        Ud.ntx++;
+        enableInterr();
+        Putc(c);
     }
-    return sent;
 }
 
 int proberx(){
