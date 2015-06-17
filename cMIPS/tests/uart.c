@@ -50,15 +50,18 @@ typedef struct UARTDriver{
 } UARTDriver;
 
 #define EOF -1
+#define MAX_SIZE 16
 
 int proberx(void);         // returns nrx
 int probetx(void);         // returns ntx
 int iostat(void);          // returns integer with status at lsb
 void ioctl(int);           // write lsb in control register
 char getc(void);           // returns char in queue, decrements nrx
-void Putc(char);            // inserts char in queue, decrements ntx
+void Putc(char);           // inserts char in queue, decrements ntx
 int ctoi(char);            // converts a character to an integer
+void itoc(int, char*);            // converts integer to char 
 
+void insertionSort(int v[], int size);
 void initUd();
 
 extern UARTDriver Ud;
@@ -76,12 +79,43 @@ int main(){
 
     initUd();
     volatile char c;
-    
+    int h, i=0, n=0;
+    int v[MAX_SIZE];
+    char last = EOF;
     while((c = getc()) != '\0') {
         if(c != EOF) {
-            Putc(c);
+            if(c == '\n' && last != '\n') {
+                v[i] = n;
+                n = 0;
+                i++;
+            }else{
+                h = ctoi(c);
+                if(h != EOF) {
+                    n = n*16 + h;         
+                }
+            }
+            last = c;
         }
     }
+
+    insertionSort(v,i);
+    char hex[9];
+    for(;i>0;i--){
+        // print(v[i-1]);
+        itoc(v[i-1], hex);
+        n = 0;
+        while(hex[n] != '\0') {
+            Putc(hex[n]);
+            n++;
+        }
+        Putc('\n');
+    }
+    Putc('\n');
+    // for(i=0;i<16;i++) {
+    //     //TODO
+    //     c = convert(v[i]);
+    //     Putc(c);
+    // }
     if(Ud.ntx < 16){
         disableInterr();
         uart->d.tx = Ud.tx_q[Ud.tx_hd];
@@ -93,24 +127,6 @@ int main(){
     int cont;
     for(cont=0;cont<1000;cont++);  //Wait for the remote uart
     
-    // while((c = getc()) != '\0') {
-    //     if(c != EOF) {
-    //         // while(!Putc(c)); // Wait till there's space on queue
-    //         int n = 0;
-    //         while(c != '\n' && c != '\0') {
-    //             int h = ctoi(c);
-    //             if(h != EOF) {
-    //                 n = n*16 + h;         
-    //             }
-    //             c = getc();
-    //         }
-    //         //If it's a negative hex make it a negative integer as well
-    //         n = 0x8000&n ? (int)(0x7FFF&n)-0x8000 : n;
-    //         // print(n);
-    //     }
-    // }
-    // Putc(c); // Sends EOF
-
     return 0;
 }
 
@@ -121,6 +137,19 @@ void initUd(){
     Ud.tx_tl = 0;
     Ud.nrx = 0;
     Ud.ntx = 16;
+}
+
+void insertionSort(int v[], int size){
+  int i, j, index;
+  for (i=1; i < size; i++) {
+    index = v[i];
+    j = i;
+    while ((j > 0) && (v[j-1] > index)) {
+      v[j] = v[j-1];
+      j = j - 1;
+    }
+    v[j] = index;
+  }
 }
 
 char getc(){
@@ -169,13 +198,42 @@ int ctoi(char c) {
 
     // If it's an uppercase letter
     if(c >= 0x41 && c < 0x47) {
-        return ((int) c) - 0x37; // 0x40 - 0xa
+        return ((int) c) - 0x37; // 0x41 - 0xa
     }
 
     // If it's a lowercase letter
     if(c >= 0x61 && c < 0x67) {
-        return ((int) c) - 0x57; //0x60 - 0xa
+        return ((int) c) - 0x57; //0x61 - 0xa
     }
 
     return EOF;
+}
+
+void itoc(int n, char* result) {
+    int i, hex, j;
+    char c;
+    j = 0;
+    result[0] = '\0';
+    for(i = 28; i >= 0; i-=4) {
+        hex = (n>>i)&0xf;
+
+        if(hex >= 0 && hex < 10) {
+            c = (char) hex + 0x30;
+        }else if(hex >= 10 && hex < 16) {
+            c = (char) hex + 0x37;
+        }
+
+        if(hex == 0 && result[0] != '\0') {
+            result[j] = c;
+            j++;
+        } else if(hex != 0) {
+            result[j] = c;
+            j++;
+        }
+    }
+    if(result[0] == '\0') {
+        result[0] = '0';
+        j = 1;
+    }
+    result[j] = '\0';
 }
