@@ -58,24 +58,20 @@ int iostat(void);          // returns integer with status at lsb
 void ioctl(int);           // write lsb in control register
 char getc(void);           // returns char in queue, decrements nrx
 void Putc(char);           // inserts char in queue, decrements ntx
-int ctoi(char);            // converts a character to an integer
-void itoc(int, char*);            // converts integer to char 
 
-void insertionSort(int v[], int size);
 void initUd();
+void insertionSort(int v[], int size);
+void writeFirstChar();     // get the first character on TX queue and write it in the UART
+int ctoi(char);            // converts a character to an integer
+void itoc(int, char*);     // converts integer to char 
 
 extern UARTDriver Ud;
 volatile Tserial *uart;
 
 int main(){
     uart = (void *)IO_UART_ADDR; // bottom of UART address range
-    Tcontrol ctrl;
-
-    ctrl.ign   = 0;
-    ctrl.intTX = 1;
-    ctrl.intRX = 1;
-    ctrl.speed = 2;        // operate at 1/2 of the highest data rate
-    uart->cs.ctl = ctrl;
+    int ictl = 0x1a; // 00011010: ign=0; intTX=1; intRX=1; speed=2;
+    ioctl(ictl);
 
     initUd();
     volatile char c;
@@ -101,7 +97,6 @@ int main(){
     insertionSort(v,i);
     char hex[9];
     for(;i>0;i--){
-        // print(v[i-1]);
         itoc(v[i-1], hex);
         n = 0;
         while(hex[n] != '\0') {
@@ -110,22 +105,13 @@ int main(){
         }
         Putc('\n');
     }
-    Putc('\n');
-    // for(i=0;i<16;i++) {
-    //     //TODO
-    //     c = convert(v[i]);
-    //     Putc(c);
-    // }
-    if(Ud.ntx < 16){
-        disableInterr();
-        uart->d.tx = Ud.tx_q[Ud.tx_hd];
-        Ud.tx_hd = (Ud.tx_hd+1)%16;
-        Ud.ntx++;
-        enableInterr();
+    
+    if(probetx() < 16){
+        writeFirstChar();
     }
 
-    int cont;
-    for(cont=0;cont<1000;cont++);  //Wait for the remote uart
+    int count;
+    for(count=0;count<1000;count++);  //Wait for the remote uart
     
     return 0;
 }
@@ -139,6 +125,61 @@ void initUd(){
     Ud.ntx = 16;
 }
 
+int proberx(){
+    return Ud.nrx;
+}
+
+int probetx(){
+    return Ud.ntx;
+}
+
+int iostat(){
+    return uart->cs.stat.s;
+}
+
+void ioctl(int ictl){
+    Tcontrol ctrl;
+    ctrl.speed = ictl & 0x7; 
+    ctrl.intRX = (ictl>>3) & 0x1;
+    ctrl.intTX = (ictl>>4) & 0x1;
+    ctrl.ign   = (ictl>>5) & 0x7;
+    uart->cs.ctl = ctrl;
+}
+
+char getc(){
+    char c = EOF;
+    if(proberx() > 0){
+        disableInterr();
+        c = Ud.rx_q[Ud.rx_hd];
+        Ud.rx_hd = (Ud.rx_hd+1)%16;
+        Ud.nrx--;
+        enableInterr();
+    }
+    return c;
+}
+
+void Putc(char c){
+    if(probetx() > 0){
+        disableInterr();
+        Ud.tx_q[Ud.tx_tl] = c;
+        Ud.tx_tl = (Ud.tx_tl+1)%16;
+        Ud.ntx--;
+        enableInterr();
+    }else{
+        writeFirstChar();
+        Putc(c);
+    }
+}
+
+void writeFirstChar(){
+    while(!(iostat()&TXempty));
+    disableInterr();
+    uart->d.tx = Ud.tx_q[Ud.tx_hd];
+    Ud.tx_hd = (Ud.tx_hd+1)%16;
+    Ud.ntx++;
+    enableInterr();
+}
+
 void insertionSort(int v[], int size){
   int i, j, index;
   for (i=1; i < size; i++) {
@@ -150,44 +191,6 @@ void insertionSort(int v[], int size){
     }
     v[j] = index;
   }
-}
-
-char getc(){
-    char c = EOF;
-    if(Ud.nrx > 0){
-        disableInterr();
-        c = Ud.rx_q[Ud.rx_hd];
-        Ud.rx_hd = (Ud.rx_hd+1)%16;
-        Ud.nrx--;
-        enableInterr();
-    }
-    return c;
-}
-
-void Putc(char c){
-    if(Ud.ntx > 0){
-        disableInterr();
-        Ud.tx_q[Ud.tx_tl] = c;
-        Ud.tx_tl = (Ud.tx_tl+1)%16;
-        Ud.ntx--;
-        enableInterr();
-    }else{
-        while(!(TXempty&uart->cs.stat.s));
-        disableInterr();
-        uart->d.tx = Ud.tx_q[Ud.tx_hd];
-        Ud.tx_hd = (Ud.tx_hd+1)%16;
-        Ud.ntx++;
-        enableInterr();
-        Putc(c);
-    }
-}
-
-int proberx(){
-    return Ud.nrx;
-}
-
-int probetx(){
-    return Ud.ntx;
 }
 
 int ctoi(char c) {

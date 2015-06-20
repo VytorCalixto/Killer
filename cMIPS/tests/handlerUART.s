@@ -36,6 +36,7 @@ RX:
     # sw  $k1, 0($a0)               # Print for debug
 
     lw    $k1, 0($a1)
+    nop
     j     RX
     nop
 
@@ -81,6 +82,7 @@ TX:
     # sw  $a1, 0($a0)               # Print for debug
 
     lw    $k1, 0($a0)
+    nop
     j     RX
     nop
 
