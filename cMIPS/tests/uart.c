@@ -84,6 +84,7 @@ int main(){
                 v[i] = n;
                 n = 0;
                 i++;
+                insertionSort(v,i);
             }else{
                 h = ctoi(c);
                 if(h != EOF) {
@@ -94,10 +95,10 @@ int main(){
         }
     }
 
-    insertionSort(v,i);
     char hex[9];
-    for(;i>0;i--){
-        itoc(v[i-1], hex);
+    int count;
+    for(count = 0; count < i; count++){
+        itoc(v[count], hex);
         n = 0;
         while(hex[n] != '\0') {
             Putc(hex[n]);
@@ -110,7 +111,6 @@ int main(){
         writeFirstChar();
     }
 
-    int count;
     for(count=0;count<1000;count++);  //Wait for the remote uart
     
     return 0;
